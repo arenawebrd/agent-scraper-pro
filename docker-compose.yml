@@ -1,0 +1,17 @@
+services:
+  bot:
+    build: .
+    image: agent-scraper-pro:latest
+    container_name: agent-scraper-pro
+    restart: unless-stopped
+    init: true
+    # Tus claves viven en ./.env (gitignored y fuera de la imagen)
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

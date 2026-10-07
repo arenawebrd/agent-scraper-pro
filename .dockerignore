@@ -1,0 +1,19 @@
+# Contexto de build: nada que no haga falta (y NUNCA las claves)
+node_modules
+dist
+.git
+.gitignore
+
+# Secretos: el contenedor los recibe en arranque vía env_file, no van en la imagen
+.env
+.env.*
+*.local
+
+*.log
+bot.log
+
+Dockerfile
+docker-compose.yml
+README.md
+.vscode
+.DS_Store

@@ -68,6 +68,21 @@ npm run lint     # typecheck
 - **Sin duplicados** → un negocio repetido entre páginas se descarta, y si el proveedor devuelve una página entera ya vista la paginación se detiene sola (no paginas de más)
 - El preview muestra el proveedor usado y el coste acumulado en USD (`🛰 anyapi · 💲$0.0026`)
 
+## Docker
+
+```bash
+cp .env.example .env             # si aún no tienes .env (Telegram + AnyAPI/SerpAPI)
+sudo docker compose up -d --build
+sudo docker compose logs -f      # actividad del bot (Ctrl+C no lo para, es -d)
+sudo docker compose down         # parar
+```
+
+- La imagen compila TypeScript (`npm run build`) y arranca con `node dist/index.js`: dentro del contenedor **no hay `tsx` ni `typescript`**, corre como el usuario `node` (no root) y no escribe nada en disco → **no necesita volúmenes**.
+- Tus claves **no entran en la imagen**: `.env` está en `.dockerignore` y el contenedor las recibe al arranque con `env_file: .env`.
+- `restart: unless-stopped` lo vuelve a levantar si se cae o si reinicias la máquina; los logs se rotan (10 MB × 3) para no llenar el disco. Sin puertos que exponer: solo hace *long-polling* saliente a Telegram.
+- ⚠️ **Una sola instancia**: si el bot de `npm start` sigue corriendo, páralo antes (`pkill -f "tsx src/index.ts"`) o uno de los dos muere con `409 Conflict`.
+- Útiles: `sudo docker compose ps` (estado) · `sudo docker compose logs --tail 50 bot` · `sudo docker compose up -d --build` (reconstruir tras tocar código).
+
 ## Proveedores de datos
 
 | | AnyAPI | SerpAPI | MOCK |
