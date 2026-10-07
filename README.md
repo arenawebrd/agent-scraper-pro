@@ -23,7 +23,7 @@ cp .env.example .env   # y rellena tus claves
 | `MAPS_PROVIDER` | opcional | `auto` (default) · `anyapi` · `serpapi` · `mock`. Fuente de datos de Google Maps |
 | `ANYAPI_KEY` | recomendada | [getanyapi.com](https://getanyapi.com) → $0.0013 por página de 20 resultados |
 | `SERPAPI_KEY` | recomendada | [serpapi.com](https://serpapi.com) → 1 crédito por página. Sin ninguna key → modo MOCK (gratis) |
-| `MAPBOX_TOKEN` | opcional | Enriquece calle/ciudad/provincia de cada lead (solo SerpAPI) |
+| `MAPBOX_TOKEN` | opcional | Rellena **localidad, provincia y código postal** cuando el proveedor no los trae (reverse geocoding, 1 req/negocio, gratis hasta 100k/mes) |
 | `ENRICH_DETAILS` | opcional | `false` (default) · `true` → pide el detalle de cada negocio a SerpAPI: **1 crédito extra por negocio** que le falte web/teléfono (solo SerpAPI) |
 | `ALLOWED_CHAT_IDS` | recomendada | IDs de Telegram autorizados, separados por coma. Vacío = bot abierto a cualquiera (⚠️ consume tu cuota) |
 | `AI_PROVIDER` | opcional | `opencode` · `gemini` · `openai` · `claude` · `openrouter` · `groq` · `none` |
@@ -56,7 +56,7 @@ npm run lint     # typecheck
 
 ### Después de cada búsqueda
 
-- **📄 CSV / 🧾 JSON** → envía el archivo al chat (mismas columnas que Prospect Hub + `thumbnail`, `price`/`extracted_price`, `open_state`, `amenities`, `service_options`, `check_in_time`/`check_out_time` — estos dos se rellenan para hoteles y alojamientos, Google no siempre los publica, y hace falta `ENRICH_DETAILS=true` — y columnas dinámicas `ext_*` por rubro: `ext_highlights`, `ext_payments`, `ext_offerings`…, el contenido de `extensions` varía según el tipo de negocio)
+- **📄 CSV / 🧾 JSON** → envía el archivo al chat (mismas columnas que Prospect Hub + `thumbnail`, **`opening_hours` justo detrás**, `price`/`extracted_price`, `open_state`, `amenities`, `service_options`, `check_in_time`/`check_out_time` — estos dos se rellenan para hoteles y alojamientos, Google no siempre los publica, y hace falta `ENRICH_DETAILS=true` — y columnas dinámicas `ext_*` por rubro: `ext_highlights`, `ext_payments`, `ext_offerings`…, el contenido de `extensions` varía según el tipo de negocio)
 - **➕ Cargar más** → siguiente página del mismo proveedor (el token de AnyAPI lleva las coordenadas, no se repite geocodificación)
 - **🔍 Filtros** → sin web · sin teléfono · rating bajo · pocas reseñas · sin fotos (mismos umbrales que los chips de la app)
 - **🔄 Nueva búsqueda** → limpia la sesión
@@ -80,6 +80,8 @@ npm run lint     # typecheck
 - **Si necesitas horarios, cambia a `/proveedor serpapi`** antes de buscar: AnyAPI no los da y enriquezarlos uno a uno con `maps.place` ($0,00175/local) sale más caro que SerpAPI entero.
 - Solo las búsquedas exitosas se cobran: una entrada inválida de AnyAPI devuelve `400` **sin coste**.
 - AnyAPI busca **por radio**: geocodifica `location` (o la cola de la query, "… en Madrid") y pagina con `zoom` 13 de serie; si pegas un enlace de Google Maps con `@lat,lng,zoom` usa esas coordenadas (el zoom se limita a `13z`, así un link muy pegado al suelo no recorta el radio). Una query sin ubicación ("`/buscar dentistas`") no la puede geocodificar → cae a SerpAPI.
+- **Títulos formateados**: si el proveedor devuelve todo en mayúsculas o todo en minúsculas, cada palabra se escribe con inicial mayúscula (`"RESTAURANT EL PINO"` → `"Restaurant El Pino"`). Los que ya están bien escritos no se tocan (`OdontoLeon`, `GO Dental`) ni las siglas (`UPA`, `EEUU`).
+- **Localidad / código postal**: con `MAPBOX_TOKEN` se hace un reverse geocoding por cada negocio al que le falte la provincia, la localidad o el CP (o que la tenga igual que la provincia). Rellena lo que el proveedor no trae y nunca pisa lo que ya está bien. Mapbox **no tiene CP de República Dominicana**, esos siguen vacíos si el proveedor no lo dio.
 
 ## Cómo funciona
 

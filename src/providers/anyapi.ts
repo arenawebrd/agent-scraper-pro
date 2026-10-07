@@ -1,6 +1,7 @@
 import { config } from "../config";
 import type { Business, PageToken, SearchParams } from "../types";
 import type { MapsProvider, ProviderPage } from "./types";
+import { enrichLocality, formatTitle } from "./shared";
 
 // ── AnyAPI (getanyapi.com) ──────────────────────────────────
 // POST https://api.getanyapi.com/v1/run/<sku>  ·  Authorization: Bearer <key>
@@ -169,7 +170,7 @@ function mapItem(raw: any, gl: string, hl: string): Business | null {
   const photo = typeof raw.image === "string" && raw.image ? raw.image : undefined;
 
   const b: Business = {
-    title,
+    title: formatTitle(title),
     address: raw.address || undefined,
     phone: raw.phone || undefined,
     website: raw.website || undefined,
@@ -212,8 +213,10 @@ function mapItem(raw: any, gl: string, hl: string): Business | null {
   return b;
 }
 
-function pageFrom(items: any[], state: AnyState, nextCursor: string | undefined, costUsd: unknown, gl: string, hl: string): ProviderPage {
+async function pageFrom(items: any[], state: AnyState, nextCursor: string | undefined, costUsd: unknown, gl: string, hl: string): Promise<ProviderPage> {
   const results = items.map((i) => mapItem(i, gl, hl)).filter((b): b is Business => !!b && !!b.title);
+  // AnyAPI no trae provincia ni a veces el código postal → Mapbox lo completa
+  await enrichLocality(results, hl);
   return {
     results,
     hasMore: !!nextCursor,
@@ -235,7 +238,7 @@ async function nearby(params: SearchParams, state: AnyState): Promise<ProviderPa
   const json = await run("maps.search_nearby", body);
   const data = json.output?.data || {};
   const items: any[] = Array.isArray(data.items) ? data.items : [];
-  const page = pageFrom(items, state, typeof data.nextCursor === "string" ? data.nextCursor : undefined, json.costUsd, params.gl, params.hl);
+  const page = await pageFrom(items, state, typeof data.nextCursor === "string" ? data.nextCursor : undefined, json.costUsd, params.gl, params.hl);
   console.log(
     `[anyapi] nearby "${params.query}" z=${state.z}${state.c ? " (pág. siguiente)" : ""} → ${page.results.length} resultados · $${(page.costUsd ?? 0).toFixed(4)}`
   );
@@ -258,7 +261,7 @@ async function textSearch(params: SearchParams): Promise<ProviderPage> {
   const json = await run("maps.search", { query, location, language: params.hl, limit: PAGE_SIZE });
   const data = json.output?.data || {};
   const items: any[] = Array.isArray(data.items) ? data.items : [];
-  const page = pageFrom(items, { lat: 0, lng: 0, z: DEFAULT_ZOOM }, undefined, json.costUsd, params.gl, params.hl);
+  const page = await pageFrom(items, { lat: 0, lng: 0, z: DEFAULT_ZOOM }, undefined, json.costUsd, params.gl, params.hl);
   console.log(`[anyapi] texto "${query}" @ ${location} → ${page.results.length} resultados · $${(page.costUsd ?? 0).toFixed(4)} (sin paginación)`);
   return page;
 }

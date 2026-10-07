@@ -61,6 +61,7 @@ export function prepareDataForExport(data: any[]): any[] {
     processed.map_url = typeof item.map_url === "object" ? JSON.stringify(item.map_url) : item.map_url || "";
     processed.review_url = typeof item.review_url === "object" ? JSON.stringify(item.review_url) : item.review_url || "";
     processed.thumbnail = typeof item.thumbnail === "object" ? JSON.stringify(item.thumbnail) : item.thumbnail || "";
+    processed.opening_hours = item.opening_hours ? JSON.stringify(item.opening_hours) : "";
     processed.open_state = item.open_state || "";
     processed.check_in_time = item.check_in_time || "";
     processed.check_out_time = item.check_out_time || "";
@@ -76,7 +77,6 @@ export function prepareDataForExport(data: any[]): any[] {
         : item.amenities || "";
     processed.service_options = item.service_options ? JSON.stringify(item.service_options) : "";
 
-    processed.opening_hours = item.opening_hours ? JSON.stringify(item.opening_hours) : "";
     processed.scrapedAt = item.scrapedAt ? new Date(item.scrapedAt).toISOString() : "";
     return processed;
   });

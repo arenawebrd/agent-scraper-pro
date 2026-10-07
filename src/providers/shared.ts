@@ -161,6 +161,93 @@ export async function enrichWithMapbox(business: any): Promise<any> {
   }
 }
 
+// Título legible: "dental global" / "DENTAL GLOBAL" → "Dental Global".
+// Respeta los que ya están bien escritos ("OdontoLeon", "GO Dental") y las
+// siglas cortas ("UPA", "EEUU", "GO"): solo se reescribe si TODO va en mayúsculas.
+export function formatTitle(value: unknown): string {
+  const text = String(value ?? "").trim();
+  if (!text) return "";
+  const letters = text.replace(/[^\p{L}]/gu, "");
+  const source = letters.length >= 5 && letters === letters.toUpperCase() ? text.toLowerCase() : text;
+  return source.replace(/\S+/g, (word) => {
+    const m = word.match(/^([^\p{L}\p{N}]*)(\p{L}[\p{L}\p{N}’'-]*)(.*)$/u);
+    if (!m) return word;
+    return m[1] + m[2].charAt(0).toLocaleUpperCase() + m[2].slice(1) + m[3];
+  });
+}
+
+// ── Mapbox: localidad y código postal cuando el proveedor no los trae ──
+// Reverse geocoding: 1 petición por negocio (gratis hasta 100k/mes).
+function samePlace(a?: string, b?: string): boolean {
+  return !!a && !!b && a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+function needsLocality(b: any): boolean {
+  return !b.locality || !b.province || samePlace(b.locality, b.province) || !b.postal_code;
+}
+
+async function reverseLocality(b: any, token: string, language?: string): Promise<void> {
+  const gps = b.gps_coordinates || b.coordinates || b.latLng;
+  const lat = gps?.latitude ?? gps?.lat;
+  const lng = gps?.longitude ?? gps?.lng;
+  if (typeof lat !== "number" || typeof lng !== "number") return;
+
+  try {
+    const qs = new URLSearchParams({ access_token: token });
+    if (language) qs.set("language", language);
+    const res = await fetch(
+      `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?${qs.toString()}`,
+      { signal: AbortSignal.timeout(8000) }
+    );
+    if (!res.ok) return;
+    const data: any = await res.json();
+    const features: any[] = Array.isArray(data.features) ? data.features : [];
+    const text = (prefix: string) =>
+      features.find((f: any) => typeof f.id === "string" && f.id.startsWith(prefix))?.text || "";
+
+    const region = text("region.");
+    const place = text("place.") || text("locality.") || text("neighborhood.");
+    const postcode = text("postcode.");
+
+    if (!b.province && region) b.province = region;
+    if ((!b.locality || samePlace(b.locality, b.province)) && place && !samePlace(place, b.province)) {
+      b.locality = place;
+    }
+    // Mapbox no tiene código postal en todos los países (RD no) → solo se rellena si aparece
+    if (!b.postal_code && postcode) b.postal_code = postcode;
+    // Último recurso: el barrio que ya trae AnyAPI
+    if (
+      (!b.locality || samePlace(b.locality, b.province)) &&
+      b.neighborhood &&
+      !samePlace(b.neighborhood, b.province)
+    ) {
+      b.locality = b.neighborhood;
+    }
+  } catch {
+    // Sin conexión o timeout: la búsqueda sigue igual
+  }
+}
+
+// Completa localidad/provincia/código postal de la página. Devuelve cuántos toques hizo.
+export async function enrichLocality(results: Business[], language?: string): Promise<number> {
+  const token = config.mapboxToken;
+  if (!token || results.length === 0) return 0;
+  const targets = results.filter((b) => needsLocality(b));
+  if (targets.length === 0) return 0;
+
+  const CONCURRENCY = 6;
+  let next = 0;
+  const worker = async () => {
+    while (next < targets.length) {
+      const b = targets[next++];
+      await reverseLocality(b, token, language);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, targets.length) }, () => worker()));
+  console.log(`[mapbox] localidad/código postal completados en ${targets.length}/${results.length} negocios`);
+  return targets.length;
+}
+
 // src/services/api.ts:48-90 (normalización de cada resultado)
 export function normalizeBusiness(raw: any, gl: string, hl: string): Business {
   const {
@@ -171,6 +258,8 @@ export function normalizeBusiness(raw: any, gl: string, hl: string): Business {
     photos,
     ...rest
   } = raw;
+
+  if (rest.title) rest.title = formatTitle(rest.title);
 
   if (rest.type && !rest.types) {
     rest.types = [rest.type];
