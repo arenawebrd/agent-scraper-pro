@@ -37,7 +37,7 @@ cp .env.example .env   # y rellena tus claves
 ```bash
 npm run dev      # desarrollo (reinicio automático)
 npm start        # producción
-npm run smoke    # prueba del motor sin Telegram (con keys gasta ~$0,004; gratis: ANYAPI_KEY= SERPAPI_KEY= npm run smoke)
+npm run smoke    # prueba del motor sin Telegram (gratis: ANYAPI_KEY= SERPAPI_KEY= npm run smoke; con keys ≈ $0,0013 + 1 crédito)
 npm run lint     # typecheck
 ```
 
@@ -76,6 +76,7 @@ npm run lint     # typecheck
 - El proveedor se **fija en la primera página**: las páginas siguientes no pueden cambiar de fuente (un cursor no vale en otra API).
 - Cambia de fuente en caliente con `/proveedor anyapi` (por chat, no hace falta tocar `.env`).
 - Solo las búsquedas exitosas se cobran: una entrada inválida de AnyAPI devuelve `400` **sin coste**.
+- AnyAPI busca **por radio**: geocodifica `location` (o la cola de la query, "… en Madrid") y pagina con `zoom` 13 de serie; si pegas un enlace de Google Maps con `@lat,lng,zoom` usa esas coordenadas. Una query sin ubicación ("`/buscar dentistas`") no la puede geocodificar → cae a SerpAPI.
 
 ## Cómo funciona
 
@@ -99,6 +100,7 @@ Telegram → bot.ts → agent.ts (IA: texto → parámetros)
 | Texto de `/start` y `/ayuda` | `src/bot.ts` → `HELP_TEXT` | Mensaje de bienvenida e instrucciones (HTML de Telegram) |
 | Descripciones de comandos (menú) | `src/index.ts` → `setMyCommands` | Nombre y descripción que muestra Telegram bajo el chat |
 | Resto de mensajes del bot | `src/bot.ts` | Preview de resultados, errores, botones y textos de estado (literales en el código) |
+| Fuente de datos de mapas | `.env` → `MAPS_PROVIDER` o `/proveedor` | Ver sección *Proveedores de datos*; añadir otra = nuevo archivo en `src/providers/` |
 | Modelo / proveedor de IA | `.env` → `AI_PROVIDER`, `AI_MODEL` | Ver tabla de variables |
 | Nombre visible del bot | [@BotFather](https://t.me/BotFather) | No está en el código |
 
