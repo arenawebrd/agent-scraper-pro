@@ -1,20 +1,25 @@
 import { config } from "../src/config";
 import { aiAvailable } from "../src/agent";
-import { searchAll } from "../src/scraper";
+import { autoOrder, searchAll } from "../src/scraper";
 import { buildCSV, buildJSON, exportFilename } from "../src/export";
 import { applyFilters } from "../src/filters";
 
 async function main() {
   console.log("── Config ──────────────────────────────");
-  console.log(`SerpAPI : ${config.serpapiKey ? "real" : "MOCK"}`);
+  console.log(`Proveedor: ${config.provider} → ${autoOrder().join(" → ")}`);
+  console.log(`AnyAPI   : ${config.anyapiKey ? "real" : "sin key"}`);
+  console.log(`SerpAPI  : ${config.serpapiKey ? "real" : "sin key"}`);
   console.log(`IA      : ${aiAvailable() ? `${config.ai.provider}/${config.ai.model}` : "desactivada"}`);
   console.log(`Límite  : ${config.maxResults || "todos (sin límite)"} resultados`);
 
   console.log("\n── Búsqueda ────────────────────────────");
-  // Con key real usamos poco para no gastar créditos de SerpAPI
-  const params = { query: "dentistas en Santo Domingo", gl: "do", hl: "es", max: config.serpapiKey ? 5 : 12 };
+  // Con una key real usamos poco para no gastar créditos/coste
+  const real = !!(config.anyapiKey || config.serpapiKey);
+  const params = { query: "dentistas en Santo Domingo", gl: "do", hl: "es", max: real ? 5 : 12 };
   const page = await searchAll(params);
-  console.log(`Resultados: ${page.results.length} · hasMore: ${page.hasMore}`);
+  console.log(
+    `Resultados: ${page.results.length} · hasMore: ${page.hasMore} · proveedor: ${page.provider} · coste: $${(page.costUsd ?? 0).toFixed(4)}`
+  );
   const first = page.results[0];
   if (!first) throw new Error("Sin resultados");
   console.log(`Primer lead: ${first.title} | ${first.phone || "s/tel"} | ${first.website || "s/web"} | map_url: ${first.map_url ? "ok" : "falta"}`);

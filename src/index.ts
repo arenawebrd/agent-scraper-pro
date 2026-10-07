@@ -15,11 +15,14 @@ async function main() {
     { command: "pais", description: "País de búsqueda (ej: /pais do)" },
     { command: "idioma", description: "Idioma de resultados (ej: /idioma es)" },
     { command: "max", description: "Máximo de resultados (ej: /max 40)" },
+    { command: "proveedor", description: "Fuente de datos (auto/anyapi/serpapi)" },
     { command: "ajustes", description: "Ver configuración actual" },
   ]);
 
   const me = await bot.api.getMe();
-  console.log(`[bot] @${me.username} iniciado (modo ${config.serpapiKey ? "SerpAPI real" : "MOCK"}, IA: ${config.ai.enabled && config.ai.apiKey ? `${config.ai.provider}/${config.ai.model}` : "off"})`);
+  console.log(
+    `[bot] @${me.username} iniciado (proveedor: ${config.provider}, IA: ${config.ai.enabled && config.ai.apiKey ? `${config.ai.provider}/${config.ai.model}` : "off"})`
+  );
 
   bot.start({
     onStart: () => console.log("[bot] polling activo. Esperando mensajes…"),

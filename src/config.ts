@@ -1,4 +1,5 @@
 import dotenv from "dotenv";
+import type { ProviderId } from "./types";
 
 dotenv.config();
 
@@ -61,6 +62,17 @@ function boolEnv(name: string, fallback: boolean): boolean {
   return ["1", "true", "yes", "on"].includes(raw.trim().toLowerCase());
 }
 
+// MAPS_PROVIDER: qué fuente de datos de Google Maps usa el bot
+const PROVIDER_IDS: ProviderId[] = ["auto", "serpapi", "anyapi", "mock"];
+
+function providerEnv(): ProviderId {
+  const raw = (process.env.MAPS_PROVIDER || "").trim().toLowerCase();
+  if (!raw) return "auto";
+  if (PROVIDER_IDS.includes(raw as ProviderId)) return raw as ProviderId;
+  console.warn(`[config] MAPS_PROVIDER="${raw}" no es válido. Usa: ${PROVIDER_IDS.join(" | ")}. Se usa "auto".`);
+  return "auto";
+}
+
 // Tope duro de resultados por búsqueda (SerpAPI recomienda no pasar de start=100)
 export const MAX_RESULTS_CAP = 200;
 
@@ -85,6 +97,10 @@ const aiMeta = PROVIDERS[aiProvider];
 export const config = {
   telegramToken: strEnv("TELEGRAM_BOT_TOKEN", ""),
   serpapiKey: strEnv("SERPAPI_KEY", ""),
+  // AnyAPI (getanyapi.com): alternativa a SerpAPI, ~$0.0013 por página de 20
+  anyapiKey: strEnv("ANYAPI_KEY", ""),
+  // Fuente de datos de mapas: auto (elige la más barata) | serpapi | anyapi | mock
+  provider: providerEnv(),
   mapboxToken: strEnv("MAPBOX_TOKEN", ""),
   allowedChatIds,
   // 0 = sin límite (trae todas las páginas disponibles)
@@ -112,15 +128,32 @@ if (!config.ai.enabled && aiProvider !== "none") {
   console.warn(`[config] AI_PROVIDER=${config.ai.provider} pero falta la env ${aiMeta?.apiKeyEnv}. El modo agente quedará desactivado (los comandos /buscar funcionan igual).`);
 }
 
+const mapProviders: string[] = [];
+if (config.anyapiKey) mapProviders.push("anyapi");
+if (config.serpapiKey) mapProviders.push("serpapi");
+
+if (config.provider === "auto") {
+  console.log(
+    `[config] Proveedor de mapas: auto → ${mapProviders.length ? mapProviders.join(" → ") : "mock (sin keys, datos de prueba)"}`
+  );
+} else {
+  console.log(`[config] Proveedor de mapas: ${config.provider} (forzado con MAPS_PROVIDER)`);
+}
+
+if (config.provider === "anyapi" && !config.anyapiKey) {
+  console.warn('[config] MAPS_PROVIDER="anyapi" pero falta ANYAPI_KEY. Las búsquedas fallarán hasta que la añadas.');
+} else if (config.provider === "serpapi" && !config.serpapiKey) {
+  console.warn('[config] MAPS_PROVIDER="serpapi" pero falta SERPAPI_KEY. Las búsquedas fallarán hasta que la añadas.');
+}
+
 if (config.serpapiKey) {
-  console.log("[config] SerpAPI: modo REAL");
   console.log(
     config.enrichDetails
       ? "[config] Detalle por negocio (type=place): ACTIVADO — 1 crédito extra por cada negocio sin web/teléfono"
       : "[config] Detalle por negocio (type=place): desactivado — solo se paga la búsqueda (1 crédito por página)"
   );
 } else {
-  console.log("[config] SerpAPI: sin key → modo MOCK (datos de prueba)");
+  console.log("[config] SerpAPI: sin key → no disponible");
 }
 
 if (config.allowedChatIds.length === 0) {

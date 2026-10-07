@@ -4,9 +4,9 @@ import { config, isChatAllowed } from "./config";
 import { activeFilterLabels, applyFilters } from "./filters";
 import { buildCSV, buildJSON, exportFilename } from "./export";
 import { interpretMapsLink } from "./gmaps";
-import { resultKey, searchAll, searchPage } from "./scraper";
+import { autoOrder, providerStatus, resultKey, searchAll, searchPage } from "./scraper";
 import { clearSession, createSession, getHistory, getPrefs, getSession, pushHistory, updatePrefs } from "./session";
-import { EMPTY_FILTERS, type Business, type Filters, type SearchParams, type SearchSession } from "./types";
+import { EMPTY_FILTERS, type Business, type Filters, type ProviderId, type SearchParams, type SearchSession } from "./types";
 
 const HTML = { parse_mode: "HTML" as const } as const;
 
@@ -38,6 +38,7 @@ también conversa: «¿qué puedes hacer?», «hola», «¿cómo exporto?»
 <code>/idioma es</code> — idioma de resultados
 <code>/max 40</code> — máximo de resultados por búsqueda
 <code>/max todo</code> — sin límite, trae todos los disponibles
+<code>/proveedor anyapi</code> — fuente de datos (auto / anyapi / serpapi)
 <code>/ajustes</code> — ver configuración
 
 <b>Después de cada búsqueda</b>
@@ -47,7 +48,7 @@ también conversa: «¿qué puedes hacer?», «hola», «¿cómo exporto?»
 
 // ── Render ──────────────────────────────────────────────────
 export function renderPreview(session: SearchSession): string {
-  const { params, results, filters, hasMore, pages } = session;
+  const { params, results, filters, hasMore, pages, provider, costUsd } = session;
   const filtered = applyFilters(results, filters);
   const active = activeFilterLabels(filters);
 
@@ -57,6 +58,8 @@ export function renderPreview(session: SearchSession): string {
   let meta = `📊 <b>${filtered.length}</b> resultados`;
   if (filtered.length !== results.length) meta += ` de ${results.length} extraídos`;
   meta += ` · ${params.gl.toUpperCase()} · ${params.hl}`;
+  if (provider) meta += ` · 🛰 ${provider}`;
+  if (costUsd > 0) meta += ` · 💲$${costUsd.toFixed(4)}`;
   if (active.length) meta += `\n🎯 Filtros: <b>${esc(active.join(", "))}</b>`;
   head.push(meta);
 
@@ -139,7 +142,10 @@ async function runSearch(
 
   const session = createSession(chatId, params, filters);
   session.busy = true;
-  console.log(`[bot] búsqueda "${params.query}" gl=${params.gl} hl=${params.hl} ll=${params.ll || "-"} max=${params.max} filtros=${JSON.stringify(filters)}`);
+  const prefs = getPrefs(chatId);
+  console.log(
+    `[bot] búsqueda "${params.query}" gl=${params.gl} hl=${params.hl} ll=${params.ll || "-"} max=${params.max} proveedor=${prefs.provider} filtros=${JSON.stringify(filters)}`
+  );
 
   const statusText = `⏳ Buscando <b>${esc(params.query)}</b>…`;
   let statusId2 = statusId;
@@ -150,24 +156,32 @@ async function runSearch(
   }
   try {
     let pages = 0;
-    const page = await searchAll(params, async (collected) => {
-      pages++;
-      await ctx.api
-        .editMessageText(
-          chatId,
-          statusId2!,
-          `⏳ Buscando <b>${esc(params.query)}</b>…\n📄 página ${pages} · ${collected} resultados`,
-          HTML
-        )
-        .catch((e: any) => console.warn(`[bot] edit de progreso falló: ${e?.description || e?.message}`));
-    });
+    const page = await searchAll(
+      params,
+      async (collected) => {
+        pages++;
+        await ctx.api
+          .editMessageText(
+            chatId,
+            statusId2!,
+            `⏳ Buscando <b>${esc(params.query)}</b>…\n📄 página ${pages} · ${collected} resultados`,
+            HTML
+          )
+          .catch((e: any) => console.warn(`[bot] edit de progreso falló: ${e?.description || e?.message}`));
+      },
+      prefs.provider
+    );
 
     session.results = page.results;
     session.hasMore = page.hasMore;
-    session.start = page.nextStart ?? page.results.length;
+    session.token = page.nextToken ?? 0;
+    session.provider = page.provider;
+    session.costUsd = page.costUsd ?? 0;
     session.pages = Math.max(pages, 1);
     session.busy = false;
-    console.log(`[bot] → ${session.results.length} resultados en ${session.pages} página(s), hasMore=${page.hasMore}`);
+    console.log(
+      `[bot] → ${session.results.length} resultados en ${session.pages} página(s), hasMore=${page.hasMore}, proveedor=${page.provider}, coste=$${session.costUsd.toFixed(4)}`
+    );
 
     if (session.results.length === 0) {
       await ctx.api.editMessageText(
@@ -239,23 +253,32 @@ async function loadMore(ctx: Context): Promise<void> {
 
   session.busy = true;
   try {
-    const page = await searchPage(session.params, session.start);
+    const page = await searchPage(session.params, session.token, {
+      provider: session.provider ?? config.provider,
+      first: !session.provider,
+    });
     const seen = new Set(session.results.map(resultKey));
     let added = 0;
     for (const r of page.results) {
+      // Respeta /max aunque el proveedor traiga una página entera de 20
+      if (session.params.max > 0 && session.results.length >= session.params.max) break;
       const key = resultKey(r);
       if (seen.has(key)) continue;
       seen.add(key);
       session.results.push(r);
       added++;
     }
-    session.start = page.nextStart ?? session.start + page.results.length;
+    session.token = page.nextToken ?? session.token;
+    session.provider = page.provider;
+    session.costUsd = (session.costUsd || 0) + (page.costUsd ?? 0);
     const withinLimit = session.params.max <= 0 || session.results.length < session.params.max;
     // Página sin nada nuevo → ya no hay más negocios, no sigas paginando
     session.hasMore = page.hasMore && withinLimit && added > 0;
     session.pages += 1;
     session.busy = false;
-    console.log(`[bot] cargar más → +${added} (total ${session.results.length}, página ${session.pages}, hasMore=${session.hasMore})`);
+    console.log(
+      `[bot] cargar más → +${added} (total ${session.results.length}, página ${session.pages}, hasMore=${session.hasMore}, proveedor=${page.provider}, coste=$${session.costUsd.toFixed(4)})`
+    );
 
     await ctx.editMessageText(renderPreview(session), {
       ...HTML,
@@ -363,18 +386,66 @@ export function createBot(): Bot {
     await ctx.reply(`✅ Máximo de resultados por búsqueda: <b>${value}</b>`, HTML);
   });
 
+  bot.command("proveedor", async (ctx) => {
+    const raw = String(ctx.match || "").trim().toLowerCase();
+    const current = getPrefs(ctx.chat!.id).provider;
+
+    if (!raw) {
+      const status = providerStatus()
+        .map((s) => `${s.available ? "✅" : "⚪️"} <code>${s.id}</code> — ${esc(s.label)}`)
+        .join("\n");
+      await ctx.reply(
+        `<b>Proveedor de datos de mapas</b>\nActual: <b>${current}</b>${
+          current === "auto" ? ` → ${autoOrder().join(" → ")}` : ""
+        }\n\n${status}\n\nCambia con <code>/proveedor auto</code> · <code>/proveedor anyapi</code> · <code>/proveedor serpapi</code>`,
+        HTML
+      );
+      return;
+    }
+
+    const options: ProviderId[] = ["auto", "anyapi", "serpapi", "mock"];
+    if (!options.includes(raw as ProviderId)) {
+      await ctx.reply(
+        "Opción no válida. Usa <code>/proveedor auto</code> · <code>/proveedor anyapi</code> · <code>/proveedor serpapi</code>",
+        HTML
+      );
+      return;
+    }
+    const id = raw as ProviderId;
+    if (id !== "auto") {
+      const status = providerStatus().find((s) => s.id === id);
+      if (status && !status.available) {
+        const envVar = id === "serpapi" ? "SERPAPI_KEY" : id === "anyapi" ? "ANYAPI_KEY" : "";
+        await ctx.reply(
+          `⚠️ El proveedor <b>${id}</b> no está configurado: falta <code>${envVar}</code> en .env.`,
+          HTML
+        );
+        return;
+      }
+    }
+    updatePrefs(ctx.chat!.id, { provider: id });
+    await ctx.reply(
+      id === "auto"
+        ? `✅ Proveedor: <b>auto</b> → ${autoOrder().join(" → ")}`
+        : `✅ Proveedor: <b>${id}</b> — las próximas búsquedas usarán esta fuente`,
+      HTML
+    );
+  });
+
   bot.command("ajustes", async (ctx) => {
     const prefs = getPrefs(ctx.chat!.id);
     const ai = aiAvailable()
       ? `🧠 ${config.ai.provider} · <code>${config.ai.model}</code>`
       : "🧠 desactivado (solo comandos /buscar)";
-    const scraper = config.serpapiKey ? "🛰 SerpAPI real" : "🧪 SerpAPI modo MOCK";
+    const scraper = `🛰 Fuente: <b>${prefs.provider}</b>${
+      prefs.provider === "auto" ? ` → ${autoOrder().join(" → ")}` : ""
+    }`;
     const access =
       config.allowedChatIds.length > 0
         ? `🔒 whitelist: ${config.allowedChatIds.length} chat(s)`
         : "⚠️ abierto a cualquier chat (define ALLOWED_CHAT_IDS)";
     await ctx.reply(
-      `<b>Ajustes actuales</b>\n🌍 País: <b>${prefs.gl.toUpperCase()}</b>\n🗣 Idioma: <b>${prefs.hl}</b>\n📊 Máx. resultados: <b>${prefs.max || "todos"}</b>\n${ai}\n${scraper}\n${access}`,
+      `<b>Ajustes actuales</b>\n🌍 País: <b>${prefs.gl.toUpperCase()}</b>\n🗣 Idioma: <b>${prefs.hl}</b>\n📊 Máx. resultados: <b>${prefs.max || "todos"}</b>\n${scraper}\n${ai}\n${access}`,
       HTML
     );
   });

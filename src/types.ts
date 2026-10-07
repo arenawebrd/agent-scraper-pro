@@ -51,33 +51,47 @@ export const EMPTY_FILTERS: Filters = {
   sinFotos: false,
 };
 
+// Fuente de datos de Google Maps. "auto" = elige la más barata disponible.
+export type ProviderId = "auto" | "serpapi" | "anyapi" | "mock";
+
+// Cómo pagina cada proveedor: SerpAPI usa un offset numérico,
+// AnyAPI un cursor opaco ("a1:<base64url>") que además lleva las coordenadas.
+export type PageToken = number | string;
+
 export interface SearchParams {
   query: string;
   gl: string;
   hl: string;
   ll?: string;
   max: number;
+  // Solo ciudad/zona ("Santo Domingo", "Madrid"): la usa AnyAPI para geocodificar
+  location?: string;
 }
 
 export interface SearchPage {
   results: Business[];
   hasMore: boolean;
-  // Offset real para pedir la siguiente página (evita repetir por desfases de dedupe)
-  nextStart?: number;
+  // Token real para pedir la siguiente página (evita repetir por desfases de dedupe)
+  nextToken?: PageToken;
 }
 
 export interface ChatPrefs {
   gl: string;
   hl: string;
   max: number;
+  provider: ProviderId;
 }
 
 export interface SearchSession {
   params: SearchParams;
   results: Business[];
-  start: number;
+  token: PageToken;
   hasMore: boolean;
   pages: number;
   filters: Filters;
   busy: boolean;
+  // Proveedor fijado en la primera página (los siguientes deben usar el mismo)
+  provider?: Exclude<ProviderId, "auto">;
+  // Coste acumulado de la sesión en USD (0 en SerpAPI, que usa créditos)
+  costUsd: number;
 }

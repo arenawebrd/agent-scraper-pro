@@ -81,13 +81,14 @@ CAPACIDADES DEL BOT:
 - Filtros: sin web, sin teléfono, rating bajo, pocas reseñas (<10), sin fotos
 - Exportación a CSV y JSON (nombre, dirección, teléfono, web, rating, reseñas, coordenadas, imagen, horarios)
 - Paginación de 20 en 20; trae todos los resultados disponibles salvo límite explícito (default: sin límite)
-- Comandos: /buscar <texto>, /pais xx, /idioma xx, /max n, /ajustes, /ayuda
+- Comandos: /buscar <texto>, /pais xx, /idioma xx, /max n, /proveedor auto|anyapi|serpapi, /ajustes, /ayuda
 - Interpreta enlaces de Google Maps que le peguen
 
 DECIDE EL TIPO DE MENSAJE:
 1. type="search" cuando el usuario quiere buscar o extraer prospectos/negocios, aunque sea implícito:
    - "busca X en Y", "dame leads de X", "quiero fotógrafos en Madrid", "necesito clínicas sin web en Santo Domingo"
    - query = tipo de negocio + ubicación (en el idioma del usuario); gl = país ISO-2 (dedúcelo del mensaje, si no usa el default); hl = idioma
+   - location = SOLO la ciudad/zona ("Santo Domingo", "Madrid", "Barcelona"), sin el tipo de negocio. Ponla siempre que la ubiques
    - ll solo si da coordenadas; max solo si pide cantidad; filters solo si los pide explícitamente
    - Si pide buscar pero NO se puede deducir la ubicación → type="chat" con reply preguntándola (ej: "¿En qué ciudad o país los buscas?")
 2. type="chat" para todo lo demás: saludos, preguntas sobre qué puede hacer o cómo usarlo, dudas, agradecimientos, mensajes vagos o ambiguos.
@@ -97,7 +98,7 @@ DECIDE EL TIPO DE MENSAJE:
    - No inventes funciones que no están listadas
 
 DEVUELVE SOLO JSON válido, sin markdown ni explicaciones:
-{"type":"search","query":string,"gl":string,"hl":string,"ll":string|null,"max":number|null,"filters":{"sinWeb":boolean,"sinTelefono":boolean,"ratingBajo":boolean,"pocasReviews":boolean,"sinFotos":boolean}}
+{"type":"search","query":string,"location":string|null,"gl":string,"hl":string,"ll":string|null,"max":number|null,"filters":{"sinWeb":boolean,"sinTelefono":boolean,"ratingBajo":boolean,"pocasReviews":boolean,"sinFotos":boolean}}
 o
 {"type":"chat","reply":string}
 
@@ -181,6 +182,9 @@ export async function classifyMessage(
   };
   const ll = parseLl(json.ll);
   if (ll) params.ll = ll;
+  if (typeof json.location === "string" && json.location.trim()) {
+    params.location = json.location.trim();
+  }
 
   return { kind: "search", params, filters };
 }

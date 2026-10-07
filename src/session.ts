@@ -7,7 +7,12 @@ const sessions = new Map<number, SearchSession>();
 export function getPrefs(chatId: number): ChatPrefs {
   const existing = prefs.get(chatId);
   if (existing) return existing;
-  const fresh: ChatPrefs = { gl: config.defaultGl, hl: config.defaultHl, max: config.maxResults };
+  const fresh: ChatPrefs = {
+    gl: config.defaultGl,
+    hl: config.defaultHl,
+    max: config.maxResults,
+    provider: config.provider,
+  };
   prefs.set(chatId, fresh);
   return fresh;
 }
@@ -27,11 +32,13 @@ export function createSession(chatId: number, params: SearchParams, filters: Par
   const session: SearchSession = {
     params,
     results: [],
-    start: 0,
+    token: 0,
     hasMore: false,
     pages: 0,
     filters: { ...EMPTY_FILTERS, ...filters },
     busy: false,
+    provider: undefined,
+    costUsd: 0,
   };
   sessions.set(chatId, session);
   return session;
