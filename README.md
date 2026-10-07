@@ -37,11 +37,16 @@ cp .env.example .env   # y rellena tus claves
 ```bash
 npm run dev      # desarrollo (reinicio automático)
 npm start        # producción
-npm run smoke    # prueba del motor sin Telegram (gratis: ANYAPI_KEY= SERPAPI_KEY= npm run smoke; con keys ≈ $0,0013 + 1 crédito)
+npm run smoke    # prueba del motor sin Telegram (gratis, ver nota)
 npm run lint     # typecheck
 ```
 
-> ⚠️ **Solo una instancia a la vez.** Telegram solo admite un `getUpdates` por bot: si levantas otra mientras una corre, la que llegue después muere con `409 Conflict`. Antes de relanzar, mata la anterior con `pkill -f "tsx src/index.ts"`.
+- **Smoke sin gastar nada** (fuerza mock y apaga la IA):
+  `AI_PROVIDER=none MAPS_PROVIDER=mock ANYAPI_KEY= SERPAPI_KEY= npm run smoke`
+  ⚠️ Si tu `.env` tiene `MAPS_PROVIDER=serpapi` (o cualquier otro forzado) hace **falta** `MAPS_PROVIDER=mock`, porque el proveedor elegido no se cambia solo.
+- **Smoke con claves reales**: cuesta ≈ **$0,0013** (AnyAPI trae 5 resultados en una sola página) o **1 crédito** si `MAPS_PROVIDER=serpapi`. Si la IA no tiene cuota libre, añade `AI_PROVIDER=none` o el smoke falla en la última sección.
+
+> ⚠️ **Solo una instancia a la vez.** Telegram solo admite un `getUpdates` por bot: si levantas otra mientras una corre, **la que estaba corriendo antes es la que muere** con `409 Conflict` (la petición nueva corta a la antigua; solo sobrevive la última). Antes de relanzar, mata la anterior con `pkill -f "tsx src/index.ts"`.
 
 ### Comandos
 
@@ -50,7 +55,7 @@ npm run lint     # typecheck
 | `/buscar dentistas en Santo Domingo` | Búsqueda directa sin IA |
 | *(texto libre)* | El agente IA interpreta: *"cafeterías sin web en Madrid con menos de 20 reseñas"* |
 | `/pais do` · `/idioma es` · `/max 40` · `/max todo` | Ajustes por defecto (`/max todo` = sin límite) |
-| `/proveedor anyapi` | Fuente de datos: `auto` · `anyapi` · `serpapi` (`/proveedor` sin argumentos la muestra) |
+| `/proveedor anyapi` | Fuente de datos: `auto` · `anyapi` · `serpapi` · `mock` (`/proveedor` sin argumentos la muestra) |
 | `/ajustes` | Ver configuración actual |
 | `/ayuda` | Instrucciones |
 
@@ -67,12 +72,12 @@ npm run lint     # typecheck
 
 | | AnyAPI | SerpAPI | MOCK |
 |---|---|---|---|
-| Coste | **$0.0013 / página (20 res.)** ≈ $0,065 por 1000 resultados | 1 crédito / página ≈ $0,75 por 1000 | gratis |
+| Coste | **$0.0013 / página (20 res.)** ≈ $0,065 por 1000 resultados | 1 crédito / página ≈ $0,75 por 1000 (plan Developer: $75 por 5.000 búsquedas) | gratis |
 | Paginación | cursor (`nextCursor`) | offset numérico | offset |
 | Geocodificación | Nominatim (gratis) con `location` o la query | `ll` opcional de Google | — |
 | `opening_hours` | ❌ (no los publica) | ✅ | ✅ |
-| `extensions` (`ext_*`) | ❌ | ✅ | ✅ |
-| Detalle extra (`ENRICH_DETAILS`) | ❌ (pendiente de `maps.place`) | ✅ | ✅ |
+| `extensions` (`ext_*`) | ❌ | ✅ | ❌ (los datos de prueba no los traen) |
+| Detalle extra (`ENRICH_DETAILS`) | ❌ (`maps.place` existe a $0,00175/negocio, sin conectar) | ✅ | — |
 
 - **`MAPS_PROVIDER=auto`** (default) → prueba AnyAPI; si falla o devuelve 0 resultados en la primera página, usa SerpAPI. Con dos keys, el orden es `anyapi → serpapi`.
 - El proveedor se **fija en la primera página**: las páginas siguientes no pueden cambiar de fuente (un cursor no vale en otra API).
@@ -118,8 +123,10 @@ Los textos de `HELP_TEXT` y `SYSTEM_PROMPT` usan HTML de Telegram (`<b>`, `<code
 | Concepto | Coste | Control |
 |---|---|---|
 | Página `maps.search_nearby` (20 resultados) | **$0.0013** | `MAX_RESULTS` + tope de 30 páginas |
+| Búsqueda de texto `maps.search` (sin paginar) | **$0.00175** | solo cuando no hay coordenadas (fallback) |
+| Detalle de un negocio (`maps.place`) | **$0.00175** | sin conectar: `ENRICH_DETAILS` solo habla con SerpAPI |
 | Geocodificación (Nominatim) | gratis | 1 req/s, solo en la primera página |
-| Detalle de un negocio | no existe aún | — |
+| Reverse geocoding (Mapbox: localidad/provincia/CP) | gratis (hasta 100k req/mes) | solo a los negocios con campos vacíos |
 
 **SerpAPI cuenta 1 crédito por petición exitosa** (fallidas y caché ≤1h son gratis):
 

@@ -38,7 +38,7 @@ también conversa: «¿qué puedes hacer?», «hola», «¿cómo exporto?»
 <code>/idioma es</code> — idioma de resultados
 <code>/max 40</code> — máximo de resultados por búsqueda
 <code>/max todo</code> — sin límite, trae todos los disponibles
-<code>/proveedor anyapi</code> — fuente de datos (auto / anyapi / serpapi)
+<code>/proveedor anyapi</code> — fuente de datos (auto / anyapi / serpapi / mock)
 <code>/ajustes</code> — ver configuración
 
 <b>Después de cada búsqueda</b>
@@ -397,7 +397,7 @@ export function createBot(): Bot {
       await ctx.reply(
         `<b>Proveedor de datos de mapas</b>\nActual: <b>${current}</b>${
           current === "auto" ? ` → ${autoOrder().join(" → ")}` : ""
-        }\n\n${status}\n\nCambia con <code>/proveedor auto</code> · <code>/proveedor anyapi</code> · <code>/proveedor serpapi</code>`,
+        }\n\n${status}\n\nCambia con <code>/proveedor auto</code> · <code>/proveedor anyapi</code> · <code>/proveedor serpapi</code> · <code>/proveedor mock</code>`,
         HTML
       );
       return;
@@ -406,7 +406,7 @@ export function createBot(): Bot {
     const options: ProviderId[] = ["auto", "anyapi", "serpapi", "mock"];
     if (!options.includes(raw as ProviderId)) {
       await ctx.reply(
-        "Opción no válida. Usa <code>/proveedor auto</code> · <code>/proveedor anyapi</code> · <code>/proveedor serpapi</code>",
+        "Opción no válida. Usa <code>/proveedor auto</code> · <code>/proveedor anyapi</code> · <code>/proveedor serpapi</code> · <code>/proveedor mock</code>",
         HTML
       );
       return;

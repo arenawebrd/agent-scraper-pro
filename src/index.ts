@@ -15,7 +15,7 @@ async function main() {
     { command: "pais", description: "País de búsqueda (ej: /pais do)" },
     { command: "idioma", description: "Idioma de resultados (ej: /idioma es)" },
     { command: "max", description: "Máximo de resultados (ej: /max 40)" },
-    { command: "proveedor", description: "Fuente de datos (auto/anyapi/serpapi)" },
+    { command: "proveedor", description: "Fuente de datos (auto/anyapi/serpapi/mock)" },
     { command: "ajustes", description: "Ver configuración actual" },
   ]);
 
