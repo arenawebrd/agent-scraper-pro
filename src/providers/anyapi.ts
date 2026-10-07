@@ -11,7 +11,7 @@ import type { MapsProvider, ProviderPage } from "./types";
 
 const API_BASE = "https://api.getanyapi.com/v1/run";
 const PAGE_SIZE = 20;
-const DEFAULT_ZOOM = 13; // radio de ciudad: cabece las páginas disponibles
+const DEFAULT_ZOOM = 13; // radio de ciudad. También es el máx.: por encima (links pegados muy cercanos) solo caben unas manzanas
 const TOKEN_PREFIX = "a1:";
 
 interface AnyState {
@@ -45,7 +45,9 @@ function parseLl(ll?: string): AnyState | null {
   let z = DEFAULT_ZOOM;
   if (parts[2]) {
     const zoom = parseFloat(parts[2].replace(/z$/i, ""));
-    if (!isNaN(zoom) && zoom > 0) z = zoom;
+    // Un link pegado con zoom de calle (17z) recortaría el radio a unas manzanas
+    // → lo limitamos a nivel de ciudad para no perder resultados
+    if (!isNaN(zoom) && zoom > 0) z = Math.min(zoom, DEFAULT_ZOOM);
   }
   return { lat, lng, z };
 }

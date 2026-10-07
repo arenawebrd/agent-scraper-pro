@@ -76,7 +76,7 @@ npm run lint     # typecheck
 - El proveedor se **fija en la primera página**: las páginas siguientes no pueden cambiar de fuente (un cursor no vale en otra API).
 - Cambia de fuente en caliente con `/proveedor anyapi` (por chat, no hace falta tocar `.env`).
 - Solo las búsquedas exitosas se cobran: una entrada inválida de AnyAPI devuelve `400` **sin coste**.
-- AnyAPI busca **por radio**: geocodifica `location` (o la cola de la query, "… en Madrid") y pagina con `zoom` 13 de serie; si pegas un enlace de Google Maps con `@lat,lng,zoom` usa esas coordenadas. Una query sin ubicación ("`/buscar dentistas`") no la puede geocodificar → cae a SerpAPI.
+- AnyAPI busca **por radio**: geocodifica `location` (o la cola de la query, "… en Madrid") y pagina con `zoom` 13 de serie; si pegas un enlace de Google Maps con `@lat,lng,zoom` usa esas coordenadas (el zoom se limita a `13z`, así un link muy pegado al suelo no recorta el radio). Una query sin ubicación ("`/buscar dentistas`") no la puede geocodificar → cae a SerpAPI.
 
 ## Cómo funciona
 
