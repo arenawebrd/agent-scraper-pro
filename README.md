@@ -83,6 +83,25 @@ sudo docker compose down         # parar
 - ⚠️ **Una sola instancia**: si el bot de `npm start` sigue corriendo, páralo antes (`pkill -f "tsx src/index.ts"`) o uno de los dos muere con `409 Conflict`.
 - Útiles: `sudo docker compose ps` (estado) · `sudo docker compose logs --tail 50 bot` · `sudo docker compose up -d --build` (reconstruir tras tocar código).
 
+### Ejecutarlo en otro proyecto (o en otra máquina)
+
+Todo lo anterior es **relativo al directorio**: copia o clona el repo donde quieras y levántalo igual, solo hace falta un `.env` en esa carpeta. Nada de rutas absolutas, ni volúmenes, ni puertos.
+
+Si prefieres **reutilizar la imagen ya construida desde el compose de otro proyecto**:
+
+```yaml
+# docker-compose.yml de ese otro proyecto
+services:
+  agent-scraper:
+    image: agent-scraper-pro:latest          # la que genera `docker compose build` aquí
+    # …o compilar sobre la marcha: build: /ruta/a/agent-scraper-pro
+    env_file: /ruta/a/agent-scraper-pro/.env # las claves siguen fuera de la imagen
+    restart: unless-stopped
+    init: true
+```
+
+Como no expone puertos ni monta volúmenes, no choca con los demás servicios de ese proyecto. La única regla sigue siendo la de siempre: **una sola instancia del bot a la vez en toda la máquina** (si no, 409).
+
 ## Proveedores de datos
 
 | | AnyAPI | SerpAPI | MOCK |
