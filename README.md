@@ -41,6 +41,8 @@ npm run smoke    # prueba del motor sin Telegram (gratis: ANYAPI_KEY= SERPAPI_KE
 npm run lint     # typecheck
 ```
 
+> ⚠️ **Solo una instancia a la vez.** Telegram solo admite un `getUpdates` por bot: si levantas otra mientras una corre, la que llegue después muere con `409 Conflict`. Antes de relanzar, mata la anterior con `pkill -f "tsx src/index.ts"`.
+
 ### Comandos
 
 | Comando | Qué hace |
@@ -75,6 +77,7 @@ npm run lint     # typecheck
 - **`MAPS_PROVIDER=auto`** (default) → prueba AnyAPI; si falla o devuelve 0 resultados en la primera página, usa SerpAPI. Con dos keys, el orden es `anyapi → serpapi`.
 - El proveedor se **fija en la primera página**: las páginas siguientes no pueden cambiar de fuente (un cursor no vale en otra API).
 - Cambia de fuente en caliente con `/proveedor anyapi` (por chat, no hace falta tocar `.env`).
+- **Si necesitas horarios, cambia a `/proveedor serpapi`** antes de buscar: AnyAPI no los da y enriquezarlos uno a uno con `maps.place` ($0,00175/local) sale más caro que SerpAPI entero.
 - Solo las búsquedas exitosas se cobran: una entrada inválida de AnyAPI devuelve `400` **sin coste**.
 - AnyAPI busca **por radio**: geocodifica `location` (o la cola de la query, "… en Madrid") y pagina con `zoom` 13 de serie; si pegas un enlace de Google Maps con `@lat,lng,zoom` usa esas coordenadas (el zoom se limita a `13z`, así un link muy pegado al suelo no recorta el radio). Una query sin ubicación ("`/buscar dentistas`") no la puede geocodificar → cae a SerpAPI.
 

@@ -24,9 +24,20 @@ async function main() {
     `[bot] @${me.username} iniciado (proveedor: ${config.provider}, IA: ${config.ai.enabled && config.ai.apiKey ? `${config.ai.provider}/${config.ai.model}` : "off"})`
   );
 
-  bot.start({
-    onStart: () => console.log("[bot] polling activo. Esperando mensajes…"),
-  });
+  try {
+    await bot.start({
+      onStart: () => console.log("[bot] polling activo. Esperando mensajes…"),
+    });
+  } catch (error) {
+    const description = String((error as { description?: string })?.description ?? "");
+    if (description.includes("409")) {
+      console.error("");
+      console.error("[bot] ⚠️  Telegram dice que YA hay otra instancia conectada (409 Conflict).");
+      console.error('     Detén la otra con:  pkill -f "tsx src/index.ts"  y relanza este.');
+      process.exit(1);
+    }
+    throw error;
+  }
 }
 
 main().catch((error) => {
