@@ -1,0 +1,97 @@
+# Agent Scraper Pro 🤖
+
+Bot de Telegram que busca prospectos en **Google Maps** usando el mismo motor que el módulo *Google Maps Scraper* de Prospect Hub (SerpAPI), con agente de IA opcional para buscar en lenguaje natural y exportación a **CSV / JSON** con las mismas columnas que la app.
+
+## Requisitos
+
+- Node.js 20+
+- Una API key de [SerpAPI](https://serpapi.com) (si no, el bot funciona en **modo MOCK** con datos de prueba)
+- Un bot de Telegram creado con [@BotFather](https://t.me/BotFather) → `TELEGRAM_BOT_TOKEN`
+
+## Instalación
+
+```bash
+npm install
+cp .env.example .env   # y rellena tus claves
+```
+
+### Variables `.env`
+
+| Variable | Obligatoria | Descripción |
+|---|---|---|
+| `TELEGRAM_BOT_TOKEN` | ✅ | Token de BotFather |
+| `SERPAPI_KEY` | recomendada | Sin ella → modo MOCK (gratis) |
+| `MAPBOX_TOKEN` | opcional | Enriquece calle/ciudad/provincia de cada lead |
+| `ENRICH_DETAILS` | opcional | `false` (default) · `true` → pide el detalle de cada negocio a SerpAPI: **1 crédito extra por negocio** que le falte web/teléfono |
+| `ALLOWED_CHAT_IDS` | recomendada | IDs de Telegram autorizados, separados por coma. Vacío = bot abierto a cualquiera (⚠️ consume tu cuota) |
+| `AI_PROVIDER` | opcional | `opencode` · `gemini` · `openai` · `claude` · `openrouter` · `groq` · `none` |
+| `AI_MODEL` | opcional | Fuerza un modelo concreto (si no, usa el default del proveedor) |
+| `*_API_KEY` | según proveedor | `OPENCODE_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `GROQ_API_KEY` |
+| `MAX_RESULTS` | opcional | Resultados por búsqueda: `0` / `todo` (default) = **todos los disponibles** · número = tope (máx 200) |
+| `DEFAULT_GL` / `DEFAULT_HL` | opcional | País e idioma por defecto (default `do` / `es`) |
+
+## Uso
+
+```bash
+npm run dev      # desarrollo (reinicio automático)
+npm start        # producción
+npm run smoke    # prueba del motor sin Telegram (mock + CSV/JSON + IA)
+npm run lint     # typecheck
+```
+
+### Comandos
+
+| Comando | Qué hace |
+|---|---|
+| `/buscar dentistas en Santo Domingo` | Búsqueda directa sin IA |
+| *(texto libre)* | El agente IA interpreta: *"cafeterías sin web en Madrid con menos de 20 reseñas"* |
+| `/pais do` · `/idioma es` · `/max 40` · `/max todo` | Ajustes por defecto (`/max todo` = sin límite) |
+| `/ajustes` | Ver configuración actual |
+| `/ayuda` | Instrucciones |
+
+### Después de cada búsqueda
+
+- **📄 CSV / 🧾 JSON** → envía el archivo al chat (mismas columnas que Prospect Hub + `thumbnail`, `price`/`extracted_price`, `open_state`, `amenities`, `service_options`, `check_in_time`/`check_out_time` — estos dos se rellenan para hoteles y alojamientos, Google no siempre los publica, y hace falta `ENRICH_DETAILS=true` — y columnas dinámicas `ext_*` por rubro: `ext_highlights`, `ext_payments`, `ext_offerings`…, el contenido de `extensions` varía según el tipo de negocio)
+- **➕ Cargar más** → siguiente página de SerpAPI
+- **🔍 Filtros** → sin web · sin teléfono · rating bajo · pocas reseñas · sin fotos (mismos umbrales que los chips de la app)
+- **🔄 Nueva búsqueda** → limpia la sesión
+- **Sin duplicados** → un negocio repetido entre páginas se descarta, y si Google devuelve una página entera ya vista la paginación se detiene sola (no paginas de más)
+
+## Cómo funciona
+
+```
+Telegram → bot.ts → agent.ts (IA: texto → parámetros)
+                        ↓
+                  scraper.ts (SerpAPI google_maps + place details + Mapbox)
+                        ↓
+                  filters.ts → export.ts (CSV/JSON) → Telegram
+```
+
+`scraper.ts` es un port directo de `server.ts:795-919` de Prospect Hub: búsqueda paginada, enriquecimiento de teléfono/web en chunks de 5 con timeout de 15s, `getGoogleDomain()` por país, normalización de horarios y geocodificación inversa con Mapbox.
+
+## Personalización (identidad y prompts)
+
+| Qué cambiar | Dónde | Detalle |
+|---|---|---|
+| Prompt / personalidad de la IA | `src/agent.ts` → `SYSTEM_PROMPT` | Identidad ("Agent Scraper Pro"), capacidades, tono, idioma y el JSON que debe devolver (`type="search"` / `type="chat"`) |
+| Texto de `/start` y `/ayuda` | `src/bot.ts` → `HELP_TEXT` | Mensaje de bienvenida e instrucciones (HTML de Telegram) |
+| Descripciones de comandos (menú) | `src/index.ts` → `setMyCommands` | Nombre y descripción que muestra Telegram bajo el chat |
+| Resto de mensajes del bot | `src/bot.ts` | Preview de resultados, errores, botones y textos de estado (literales en el código) |
+| Modelo / proveedor de IA | `.env` → `AI_PROVIDER`, `AI_MODEL` | Ver tabla de variables |
+| Nombre visible del bot | [@BotFather](https://t.me/BotFather) | No está en el código |
+
+Los textos de `HELP_TEXT` y `SYSTEM_PROMPT` usan HTML de Telegram (`<b>`, `<code>`); el prompt de IA solo debe describir funciones que existan realmente en el código.
+
+## Seguridad / costes
+
+SerpAPI cuenta **1 crédito por petición exitosa** (fallidas y caché ≤1h son gratis):
+
+| Concepto | Créditos | Control |
+|---|---|---|
+| Página de búsqueda (`type=search`) | 1 por página (20 resultados) | `MAX_RESULTS` (default `0` = todas las disponibles, Google suele dar ~60-120) |
+| Detalle de un negocio (`type=place`) | 1 **por negocio** | `ENRICH_DETAILS=false` (default) → 0 |
+| IA (interpretar el texto) | no usa SerpAPI | `AI_PROVIDER=none` la desactiva |
+
+- `ALLOWED_CHAT_IDS` + `MAX_RESULTS` protegen tu cuota de búsquedas.
+- La IA solo se usa para interpretar el texto (respuesta corta y barata); si falla, el bot hace la búsqueda con el texto tal cual.
+- Con `ENRICH_DETAILS=false` el coste por búsqueda es **1 crédito por página** (igual que Prospect Hub); los campos que solo da el detalle (`website` que falta, `check_in_time`…) quedan vacíos.

@@ -1,0 +1,32 @@
+import { config } from "./config";
+import { createBot } from "./bot";
+
+async function main() {
+  if (!config.telegramToken) {
+    console.error("Falta TELEGRAM_BOT_TOKEN en .env (consíguelo con @BotFather)");
+    process.exit(1);
+  }
+
+  const bot = createBot();
+
+  await bot.api.setMyCommands([
+    { command: "buscar", description: "Buscar negocios en Google Maps" },
+    { command: "ayuda", description: "Cómo usar el bot" },
+    { command: "pais", description: "País de búsqueda (ej: /pais do)" },
+    { command: "idioma", description: "Idioma de resultados (ej: /idioma es)" },
+    { command: "max", description: "Máximo de resultados (ej: /max 40)" },
+    { command: "ajustes", description: "Ver configuración actual" },
+  ]);
+
+  const me = await bot.api.getMe();
+  console.log(`[bot] @${me.username} iniciado (modo ${config.serpapiKey ? "SerpAPI real" : "MOCK"}, IA: ${config.ai.enabled && config.ai.apiKey ? `${config.ai.provider}/${config.ai.model}` : "off"})`);
+
+  bot.start({
+    onStart: () => console.log("[bot] polling activo. Esperando mensajes…"),
+  });
+}
+
+main().catch((error) => {
+  console.error("[bot] fallo al arrancar:", error);
+  process.exit(1);
+});

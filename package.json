@@ -1,0 +1,24 @@
+{
+  "name": "agent-scraper-pro",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bot de Telegram que busca prospectos en Google Maps (mismo motor que Prospect Hub) y exporta CSV/JSON.",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "smoke": "tsx scripts/smoke.ts"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "grammy": "^1.39.0",
+    "serpapi": "^2.2.1",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "tsx": "^4.21.0",
+    "typescript": "~5.8.2"
+  }
+}
