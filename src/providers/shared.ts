@@ -229,11 +229,25 @@ async function reverseLocality(b: any, token: string, language?: string): Promis
 }
 
 // Completa localidad/provincia/código postal de la página. Devuelve cuántos toques hizo.
+// Corre en ambos proveedores (AnyAPI y SerpAPI): lo que la fuente no trae, Mapbox lo completa.
 export async function enrichLocality(results: Business[], language?: string): Promise<number> {
+  if (results.length === 0) return 0;
+
+  // CP escondido en la propia dirección ("residencial X, Las Terrenas 32000" → "32000")
+  let filled = 0;
+  for (const b of results) {
+    if (b.postal_code) continue;
+    const m = String(b.address || "").match(/(\d{4,6})\s*$/);
+    if (m) {
+      b.postal_code = m[1];
+      filled++;
+    }
+  }
+
   const token = config.mapboxToken;
-  if (!token || results.length === 0) return 0;
+  if (!token) return filled;
   const targets = results.filter((b) => needsLocality(b));
-  if (targets.length === 0) return 0;
+  if (targets.length === 0) return filled;
 
   const CONCURRENCY = 6;
   let next = 0;
@@ -245,7 +259,7 @@ export async function enrichLocality(results: Business[], language?: string): Pr
   };
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, targets.length) }, () => worker()));
   console.log(`[mapbox] localidad/código postal completados en ${targets.length}/${results.length} negocios`);
-  return targets.length;
+  return filled + targets.length;
 }
 
 // src/services/api.ts:48-90 (normalización de cada resultado)

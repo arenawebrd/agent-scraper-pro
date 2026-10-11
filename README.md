@@ -135,7 +135,7 @@ Como no expone puertos ni monta volúmenes, no choca con los demás servicios de
 - Solo las búsquedas exitosas se cobran: una entrada inválida de AnyAPI devuelve `400` **sin coste**.
 - AnyAPI busca **por radio**: geocodifica `location` (o la cola de la query, "… en Madrid") y pagina con `zoom` 13 de serie; si pegas un enlace de Google Maps con `@lat,lng,zoom` usa esas coordenadas (el zoom se limita a `13z`, así un link muy pegado al suelo no recorta el radio). Una query sin ubicación ("`/buscar dentistas`") no la puede geocodificar → cae a SerpAPI.
 - **Títulos formateados**: si el proveedor devuelve todo en mayúsculas o todo en minúsculas, cada palabra se escribe con inicial mayúscula (`"RESTAURANT EL PINO"` → `"Restaurant El Pino"`). Los que ya están bien escritos no se tocan (`OdontoLeon`, `GO Dental`) ni las siglas (`UPA`, `EEUU`).
-- **Localidad / código postal**: con `MAPBOX_TOKEN` se hace un reverse geocoding por cada negocio al que le falte la provincia, la localidad o el CP (o que la tenga igual que la provincia). Rellena lo que el proveedor no trae y nunca pisa lo que ya está bien. Mapbox **no tiene CP de República Dominicana**, esos siguen vacíos si el proveedor no lo dio.
+- **Localidad / código postal**: con `MAPBOX_TOKEN` se hace un reverse geocoding por cada negocio al que le falte la provincia, la localidad o el CP (o que la tenga igual que la provincia), **en ambos proveedores** (AnyAPI y SerpAPI). Rellena lo que el proveedor no trae y nunca pisa lo que ya está bien. Si el CP viene escondido en la dirección (`"Las Terrenas 32000"`) se extrae sin llamar a nadie. Mapbox **no tiene CP de República Dominicana**, esos siguen vacíos si el proveedor no lo dio.
 
 ## Cómo funciona
 
