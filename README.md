@@ -48,6 +48,21 @@ npm run lint     # typecheck
 
 > ⚠️ **Solo una instancia a la vez.** Telegram solo admite un `getUpdates` por bot: si levantas otra mientras una corre, **la que estaba corriendo antes es la que muere** con `409 Conflict` (la petición nueva corta a la antigua; solo sobrevive la última). Antes de relanzar, mata la anterior con `pkill -f "tsx src/index.ts"`.
 
+### CLI sin Telegram (scrape a disco)
+
+Para alimentar otros proyectos (p. ej. los directorios Astro) sin pasar por el bot:
+
+```bash
+npm run scrape -- "restaurantes en Las Terrenas" --max 40 -o restaurantes.csv
+npm run scrape -- "dentistas Santiago" --sin-web --format json
+```
+
+Misma fachada que el bot (`searchAll`: paginación sin límite, dedupe y fallback de
+proveedor) y mismas columnas del export de siempre. No necesita
+`TELEGRAM_BOT_TOKEN` ni IA: solo las claves del proveedor de mapas. Coste idéntico
+(≈ $0,0013 por página con AnyAPI, 1 crédito por página con SerpAPI). Opciones
+completas: `npm run scrape -- --help`.
+
 ### Comandos
 
 | Comando | Qué hace |

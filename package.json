@@ -10,7 +10,8 @@
     "start:dist": "node dist/index.js",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "smoke": "tsx scripts/smoke.ts"
+    "smoke": "tsx scripts/smoke.ts",
+    "scrape": "tsx scripts/scrape.ts"
   },
   "dependencies": {
     "dotenv": "^17.2.3",
