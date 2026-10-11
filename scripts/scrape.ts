@@ -3,6 +3,7 @@ import path from "node:path";
 import { config } from "../src/config";
 import { searchAll } from "../src/scraper";
 import { buildCSV, buildJSON, exportFilename } from "../src/export";
+import { buildDirectoryCSV } from "../src/directory";
 import { applyFilters } from "../src/filters";
 import type { Filters, ProviderId, SearchParams } from "../src/types";
 
@@ -16,7 +17,10 @@ Uso:
 Opciones:
   --max N              Máximo de resultados (default: MAX_RESULTS del .env, 0 = sin límite)
   --out, -o ARCHIVO    Archivo de salida (default: leads_<fecha>.csv)
-  --format csv|json    Formato del archivo (default: csv)
+  --format csv|json|directory
+                      csv = columnas del bot · json = lo mismo en JSON ·
+                      directory = listings-data.csv de la plantilla
+                      business-directory-astro (para process-listings)
   --provider, -p P     auto | anyapi | serpapi | mock (default: MAPS_PROVIDER del .env)
   --gl XX --hl XX      País e idioma (default: DEFAULT_GL/DEFAULT_HL del .env)
   --location "Ciudad"  Ciudad/zona para geocodificar (SerpAPI/AnyAPI)
@@ -30,13 +34,14 @@ Opciones:
 Ejemplos:
   npm run scrape -- "restaurantes en Las Terrenas" --max 40 -o restaurantes.csv
   npm run scrape -- "dentistas Santiago" --sin-web --format json
+  npm run scrape -- "restaurantes en Las Terrenas" --max 40 --format directory -o listings-scraped.csv
 `;
 
 interface CliArgs {
   query: string;
   max?: number;
   out?: string;
-  format: "csv" | "json";
+  format: "csv" | "json" | "directory";
   provider?: ProviderId;
   gl?: string;
   hl?: string;
@@ -60,7 +65,7 @@ function parseArgs(argv: string[]): CliArgs {
   const words: string[] = [];
   let max: number | undefined;
   let out: string | undefined;
-  let format: "csv" | "json" = "csv";
+  let format: "csv" | "json" | "directory" = "csv";
   let provider: ProviderId | undefined;
   let gl: string | undefined;
   let hl: string | undefined;
@@ -90,7 +95,9 @@ function parseArgs(argv: string[]): CliArgs {
         break;
       case "--format": {
         const f = value(i++, "--format").toLowerCase();
-        if (f !== "csv" && f !== "json") throw new Error(`--format debe ser csv o json (recibí "${f}")`);
+        if (f !== "csv" && f !== "json" && f !== "directory") {
+          throw new Error(`--format debe ser csv, json o directory (recibí "${f}")`);
+        }
         format = f;
         break;
       }
@@ -174,8 +181,11 @@ async function main() {
     return;
   }
 
-  const out = args.out ?? exportFilename(args.format);
-  const body = args.format === "csv" ? buildCSV(results) : buildJSON(results);
+  const out = args.out ?? exportFilename(args.format === "directory" ? "csv" : args.format);
+  const body =
+    args.format === "directory" ? buildDirectoryCSV(results)
+    : args.format === "json" ? buildJSON(results)
+    : buildCSV(results);
   fs.mkdirSync(path.dirname(path.resolve(out)), { recursive: true });
   fs.writeFileSync(out, body);
   console.log(`[scrape] ✓ ${args.format.toUpperCase()} → ${path.resolve(out)}`);

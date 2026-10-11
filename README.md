@@ -55,6 +55,7 @@ Para alimentar otros proyectos (p. ej. los directorios Astro) sin pasar por el b
 ```bash
 npm run scrape -- "restaurantes en Las Terrenas" --max 40 -o restaurantes.csv
 npm run scrape -- "dentistas Santiago" --sin-web --format json
+npm run scrape -- "restaurantes en Las Terrenas" --format directory -o listings-scraped.csv
 ```
 
 Misma fachada que el bot (`searchAll`: paginación sin límite, dedupe y fallback de
@@ -62,6 +63,12 @@ proveedor) y mismas columnas del export de siempre. No necesita
 `TELEGRAM_BOT_TOKEN` ni IA: solo las claves del proveedor de mapas. Coste idéntico
 (≈ $0,0013 por página con AnyAPI, 1 crédito por página con SerpAPI). Opciones
 completas: `npm run scrape -- --help`.
+
+`--format directory` genera el `listings-data.csv` de la plantilla
+`business-directory-astro`: las 51 columnas del directorio, id y slug estables
+(desde `place_id`/`cid`, así un refresco no rompe enlaces), horarios repartidos en
+`monday..sunday` y `photo`←thumbnail. Sirve directamente para
+`npm run process-listings listings-scraped.csv` en el directorio.
 
 ### Comandos
 
