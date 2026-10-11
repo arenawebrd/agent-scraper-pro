@@ -3,6 +3,7 @@ import { aiAvailable, classifyMessage } from "./agent";
 import { config, isChatAllowed } from "./config";
 import { activeFilterLabels, applyFilters } from "./filters";
 import { buildCSV, buildJSON, exportFilename } from "./export";
+import { buildDirectoryCSV } from "./directory";
 import { interpretMapsLink } from "./gmaps";
 import { autoOrder, providerStatus, resultKey, searchAll, searchPage } from "./scraper";
 import { clearSession, createSession, getHistory, getPrefs, getSession, pushHistory, updatePrefs } from "./session";
@@ -25,9 +26,11 @@ const HELP_TEXT = `🤖 <b>Agent Scraper Pro</b> — busca prospectos en Google 
 
 <b>Modo rápido</b>
 <code>/buscar dentistas en Santo Domingo</code>
+<code>/directorio restaurantes en Las Terrenas</code> — igual, pero en formato listings-data.csv
 
 <b>Modo agente (IA)</b> — escribe como si hablaras:
 <code>busca cafeterías sin web en Madrid con menos de 20 reseñas</code>
+<code>trae los listings de dentistas en Santiago para el directorio</code>
 también conversa: «¿qué puedes hacer?», «hola», «¿cómo exporto?»
 
 <b>Enlace de Google Maps</b> — pega cualquier link y lo interpreto:
@@ -43,6 +46,7 @@ también conversa: «¿qué puedes hacer?», «hola», «¿cómo exporto?»
 
 <b>Después de cada búsqueda</b>
 📄 CSV / 🧾 JSON — exportar archivo
+📁 Directorio — CSV con las columnas de la plantilla de directorios (listings-data.csv)
 ➕ Cargar más — siguiente página de resultados
 🔍 Filtros — sin web, sin teléfono, rating bajo, pocas reseñas, sin fotos`;
 
@@ -107,6 +111,7 @@ function mainKeyboard(session: SearchSession): InlineKeyboard {
   return new InlineKeyboard()
     .text("📄 CSV", "csv")
     .text("🧾 JSON", "json")
+    .text("📁 Directorio", "dir")
     .row()
     .text("➕ Cargar más", "more")
     .text("🔍 Filtros", "filters")
@@ -135,12 +140,14 @@ async function runSearch(
   ctx: Context,
   params: SearchParams,
   filters: Partial<Filters> = {},
-  statusId?: number
+  statusId?: number,
+  directory = false
 ): Promise<void> {
   const chatId = ctx.chat?.id;
   if (!chatId) return;
 
   const session = createSession(chatId, params, filters);
+  session.exportFormat = directory ? "directory" : "leads";
   session.busy = true;
   const prefs = getPrefs(chatId);
   console.log(
@@ -291,7 +298,7 @@ async function loadMore(ctx: Context): Promise<void> {
   }
 }
 
-async function sendExport(ctx: Context, ext: "csv" | "json"): Promise<void> {
+async function sendExport(ctx: Context, ext: "csv" | "json" | "directory"): Promise<void> {
   const chatId = ctx.chat?.id;
   const session = chatId ? getSession(chatId) : undefined;
   if (!session) {
@@ -304,13 +311,17 @@ async function sendExport(ctx: Context, ext: "csv" | "json"): Promise<void> {
     return;
   }
 
-  await ctx.answerCallbackQuery({ text: `Generando ${ext.toUpperCase()}…` });
-  const buffer = ext === "csv" ? buildCSV(data) : buildJSON(data);
-  const filename = exportFilename(ext);
+  const label = ext === "directory" ? "DIRECTORIO" : ext.toUpperCase();
+  await ctx.answerCallbackQuery({ text: `Generando ${label}…` });
+  const buffer = ext === "directory" ? buildDirectoryCSV(data) : ext === "csv" ? buildCSV(data) : buildJSON(data);
+  const filename = ext === "directory" ? "listings-data.csv" : exportFilename(ext === "json" ? "json" : "csv");
   const active = activeFilterLabels(session.filters);
   const caption =
     `📊 <b>${data.length}</b> leads · ${esc(session.params.query)} · ${session.params.gl.toUpperCase()}` +
-    (active.length ? ` · 🎯 ${esc(active.join(", "))}` : "");
+    (active.length ? ` · 🎯 ${esc(active.join(", "))}` : "") +
+    (ext === "directory"
+      ? "\n📁 Formato directorio (listings-data.csv). Para procesarlo: <code>npm run process-listings listings-data.csv</code>"
+      : "");
 
   await ctx.replyWithDocument(new InputFile(buffer, filename), { ...HTML, caption });
 }
@@ -344,6 +355,16 @@ export function createBot(): Bot {
     }
     const prefs = getPrefs(ctx.chat!.id);
     await runSearch(ctx, { query, gl: prefs.gl, hl: prefs.hl, max: prefs.max });
+  });
+
+  bot.command("directorio", async (ctx) => {
+    const query = String(ctx.match || "").trim();
+    if (!query) {
+      await ctx.reply("Usa: <code>/directorio restaurantes en Las Terrenas</code>", HTML);
+      return;
+    }
+    const prefs = getPrefs(ctx.chat!.id);
+    await runSearch(ctx, { query, gl: prefs.gl, hl: prefs.hl, max: prefs.max }, {}, undefined, true);
   });
 
   bot.command("pais", async (ctx) => {
@@ -507,14 +528,15 @@ export function createBot(): Bot {
           const active = Object.keys(result.filters).length
             ? " · 🎯 " + esc(activeFilterLabels(result.filters as Filters).join(", "))
             : "";
+          const dir = result.directory ? " · 📁 directorio" : "";
           await ctx.api.editMessageText(
             ctx.chat.id,
             status.message_id,
-            `🧠 <b>${esc(result.params.query)}</b> · ${result.params.gl.toUpperCase()}${active}`,
+            `🧠 <b>${esc(result.params.query)}</b> · ${result.params.gl.toUpperCase()}${active}${dir}`,
             HTML
           );
-          pushHistory(ctx.chat.id, text, `Búsqueda ejecutada: "${result.params.query}" (${result.params.gl.toUpperCase()})`);
-          await runSearch(ctx, result.params, result.filters, status.message_id);
+          pushHistory(ctx.chat.id, text, `Búsqueda ejecutada: "${result.params.query}" (${result.params.gl.toUpperCase()})${result.directory ? " · formato directorio" : ""}`);
+          await runSearch(ctx, result.params, result.filters, status.message_id, result.directory === true);
           return;
         }
 
@@ -537,6 +559,7 @@ export function createBot(): Bot {
   // Botones
   bot.callbackQuery("csv", (ctx) => sendExport(ctx, "csv"));
   bot.callbackQuery("json", (ctx) => sendExport(ctx, "json"));
+  bot.callbackQuery("dir", (ctx) => sendExport(ctx, "directory"));
   bot.callbackQuery("more", (ctx) => loadMore(ctx));
 
   bot.callbackQuery("filters", async (ctx) => {

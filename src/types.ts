@@ -94,4 +94,6 @@ export interface SearchSession {
   provider?: Exclude<ProviderId, "auto">;
   // Coste acumulado de la sesión en USD (0 en SerpAPI, que usa créditos)
   costUsd: number;
+  // "directory" = el CSV sale con las columnas de la plantilla business-directory-astro
+  exportFormat?: "leads" | "directory";
 }

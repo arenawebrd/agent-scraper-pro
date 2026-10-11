@@ -11,6 +11,7 @@ async function main() {
 
   await bot.api.setMyCommands([
     { command: "buscar", description: "Buscar negocios en Google Maps" },
+    { command: "directorio", description: "Igual que buscar, en formato listings-data.csv" },
     { command: "ayuda", description: "Cómo usar el bot" },
     { command: "pais", description: "País de búsqueda (ej: /pais do)" },
     { command: "idioma", description: "Idioma de resultados (ej: /idioma es)" },

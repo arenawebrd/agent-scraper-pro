@@ -66,16 +66,20 @@ completas: `npm run scrape -- --help`.
 
 `--format directory` genera el `listings-data.csv` de la plantilla
 `business-directory-astro`: las 51 columnas del directorio, id y slug estables
-(desde `place_id`/`cid`, así un refresco no rompe enlaces), horarios repartidos en
+(desde `place_id`/cid, así un refresco no rompe enlaces), horarios repartidos en
 `monday..sunday` y `photo`←thumbnail. Sirve directamente para
 `npm run process-listings listings-scraped.csv` en el directorio.
+En el bot también está: con `/directorio <búsqueda>`, pidiéndolo en lenguaje natural
+(*"…para el directorio"*) o con el botón **📁 Directorio** — el archivo llega como
+`listings-data.csv`.
 
 ### Comandos
 
 | Comando | Qué hace |
 |---|---|
 | `/buscar dentistas en Santo Domingo` | Búsqueda directa sin IA |
-| *(texto libre)* | El agente IA interpreta: *"cafeterías sin web en Madrid con menos de 20 reseñas"* |
+| `/directorio restaurantes en Las Terrenas` | Igual que `/buscar`, pero el 📄 CSV sale en formato `listings-data.csv` de la plantilla de directorios |
+| *(texto libre)* | El agente IA interpreta: *"cafeterías sin web en Madrid con menos de 20 reseñas"* o *"trae los listings de dentistas en Santiago para el directorio"* (último → CSV del directorio) |
 | `/pais do` · `/idioma es` · `/max 40` · `/max todo` | Ajustes por defecto (`/max todo` = sin límite) |
 | `/proveedor anyapi` | Fuente de datos: `auto` · `anyapi` · `serpapi` · `mock` (`/proveedor` sin argumentos la muestra) |
 | `/ajustes` | Ver configuración actual |
