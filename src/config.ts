@@ -41,7 +41,7 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
     style: "openai",
     baseUrl: "https://api.groq.com/openai/v1",
     apiKeyEnv: "GROQ_API_KEY",
-    defaultModel: "llama-3.3-70b-versatile",
+    defaultModel: "openai/gpt-oss-120b",
   },
   opencode: {
     style: "openai",

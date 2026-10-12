@@ -42,12 +42,23 @@ export interface SearchPageOptions {
   first?: boolean;
 }
 
+// SerpAPI solo mira `q`; si la IA separa la ubicación en `location`, la query
+// "hoteles" iría sin ciudad. Normalizamos a "hoteles en Las Terrenas".
+function withLocationInQuery(params: SearchParams): SearchParams {
+  const loc = (params.location || "").trim();
+  const q = (params.query || "").trim();
+  if (!loc || !q) return params;
+  if (q.toLowerCase().includes(loc.toLowerCase())) return params;
+  return { ...params, query: `${q} en ${loc}` };
+}
+
 // Búsqueda de una página. En modo "auto" prueba AnyAPI y, si falla o no da nada, SerpAPI.
 export async function searchPage(
-  params: SearchParams,
+  rawParams: SearchParams,
   token: PageToken = 0,
   opts: SearchPageOptions = {}
 ): Promise<ResolvedPage> {
+  const params = withLocationInQuery(rawParams);
   const first = opts.first ?? isFirstToken(token);
   const preferred = opts.provider ?? config.provider;
   const candidates = resolveCandidates(preferred, first, token);
