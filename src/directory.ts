@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import * as XLSX from "xlsx";
 import type { Business } from "./types";
 
@@ -72,12 +73,16 @@ function dayText(raw: unknown): string {
   return String(raw);
 }
 
-function countryName(raw?: string): string {
-  const t = (raw || "").trim();
-  if (!t) return "República Dominicana";
+// País legible. Orden: lo que traiga el proveedor → el `gl` de la búsqueda → vacío.
+// (Antes caía siempre en "República Dominicana", aunque se buscara en otro país.)
+function countryName(raw?: string, gl?: string): string {
+  const t = (raw || "").trim() || (gl || "").trim();
+  if (!t) return "";
   if (/^[A-Za-z]{2}$/.test(t)) {
+    // En Google `gl=uk` es Reino Unido; el código ISO es GB
+    const code = t.toUpperCase() === "UK" ? "GB" : t.toUpperCase();
     try {
-      return new Intl.DisplayNames(["es"], { type: "region" }).of(t.toUpperCase()) || t;
+      return new Intl.DisplayNames(["es"], { type: "region" }).of(code) || t;
     } catch {
       return t;
     }
@@ -89,14 +94,29 @@ function jsonIfArray(value: unknown): string {
   return Array.isArray(value) && value.length ? JSON.stringify(value) : "";
 }
 
-export function toDirectoryRows(results: Business[]): Record<string, string | number>[] {
-  const usedSlugs = new Set<string>();
+// Sufijo corto y determinista a partir del identificador estable del negocio
+function idSuffix(b: Business, index: number): string {
+  const key = b.place_id || b.data_cid || b.data_id || `${b.title}|${b.address}|${index}`;
+  return createHash("sha1").update(String(key)).digest("hex").slice(0, 6);
+}
 
-  const uniqueSlug = (title: string, locality?: string): string => {
-    const base = slugify(title);
-    let candidate = base;
-    if (usedSlugs.has(candidate) && locality) candidate = slugify(`${title} ${locality}`);
-    for (let n = 2; usedSlugs.has(candidate); n++) candidate = `${base}-${n}`;
+// Slug estable entre refrescos:
+//  - un título único → slug limpio ("farmacia-carol")
+//  - un título repetido → TODOS los repetidos llevan sufijo derivado de su place_id/cid,
+//    así no depende del orden en que lleguen los resultados
+//  - un título sin letras latinas (slug vacío) → "negocio-<hash>"
+export function toDirectoryRows(results: Business[], gl?: string): Record<string, string | number>[] {
+  const bases = results.map((b, i) => slugify(b.title || ""));
+  const counts = new Map<string, number>();
+  for (const base of bases) if (base) counts.set(base, (counts.get(base) || 0) + 1);
+
+  const usedSlugs = new Set<string>();
+  const slugFor = (b: Business, i: number): string => {
+    const base = bases[i];
+    let candidate = !base ? `negocio-${idSuffix(b, i)}` : (counts.get(base) || 0) > 1 ? `${base}-${idSuffix(b, i)}` : base;
+    // Colisión residual (mismo id repetido): contador, solo como último recurso
+    const root = candidate;
+    for (let n = 2; usedSlugs.has(candidate); n++) candidate = `${root}-${n}`;
     usedSlugs.add(candidate);
     return candidate;
   };
@@ -111,7 +131,7 @@ export function toDirectoryRows(results: Business[]): Record<string, string | nu
     // id estable entre refrescos: place_id > cid decimal > data_id (nunca el índice)
     row.id = b.place_id || b.data_cid || b.data_id || String(index + 1);
     row.name = b.title || "";
-    row.slug = uniqueSlug(b.title || `negocio-${index + 1}`, b.locality);
+    row.slug = slugFor(b, index);
     row.legal_name = "";
     row.place_id = b.place_id || "";
     row.category = firstType;
@@ -132,7 +152,7 @@ export function toDirectoryRows(results: Business[]): Record<string, string | nu
     row.postal_code = b.postal_code || "";
     row.locality = b.locality || "";
     row.province = b.province || "";
-    row.country = countryName(b.country);
+    row.country = countryName(b.country, gl);
     row.gps_coodenates = lat !== "" && lng !== "" ? `${lat},${lng}` : "";
     row.latitude = lat;
     row.longitude = lng;
@@ -162,8 +182,8 @@ export function toDirectoryRows(results: Business[]): Record<string, string | nu
 
 // CSV con las columnas de la plantilla. SIN BOM: process-listings usa la
 // primera columna ("id") como nombre y un BOM la rompería en silencio.
-export function buildDirectoryCSV(results: Business[]): Buffer {
-  const rows = toDirectoryRows(results);
+export function buildDirectoryCSV(results: Business[], gl?: string): Buffer {
+  const rows = toDirectoryRows(results, gl);
   const sheet = XLSX.utils.json_to_sheet(rows, { header: DIRECTORY_COLUMNS });
   return Buffer.from(XLSX.utils.sheet_to_csv(sheet), "utf-8");
 }

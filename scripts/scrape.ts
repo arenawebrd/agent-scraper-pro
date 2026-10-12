@@ -183,7 +183,7 @@ async function main() {
 
   const out = args.out ?? exportFilename(args.format === "directory" ? "csv" : args.format);
   const body =
-    args.format === "directory" ? buildDirectoryCSV(results)
+    args.format === "directory" ? buildDirectoryCSV(results, params.gl)
     : args.format === "json" ? buildJSON(results)
     : buildCSV(results);
   fs.mkdirSync(path.dirname(path.resolve(out)), { recursive: true });

@@ -25,7 +25,8 @@ cp .env.example .env   # y rellena tus claves
 | `SERPAPI_KEY` | recomendada | [serpapi.com](https://serpapi.com) → 1 crédito por página. Sin ninguna key → modo MOCK (gratis) |
 | `MAPBOX_TOKEN` | opcional | Rellena **localidad, provincia y código postal** cuando el proveedor no los trae (reverse geocoding, 1 req/negocio, gratis hasta 100k/mes) |
 | `ENRICH_DETAILS` | opcional | `false` (default) · `true` → pide el detalle de cada negocio a SerpAPI: **1 crédito extra por negocio** que le falte web/teléfono (solo SerpAPI) |
-| `ALLOWED_CHAT_IDS` | recomendada | IDs de Telegram autorizados, separados por coma. Vacío = bot abierto a cualquiera (⚠️ consume tu cuota) |
+| `ALLOWED_CHAT_IDS` | **obligatoria** | IDs de Telegram autorizados, separados por coma. Vacío = el bot **rechaza a todos** (cerrado por defecto). Escríbele al bot y te responde con tu chat id |
+| `ALLOW_OPEN_BOT` | opcional | `false` (default) · `true` → el bot responde a cualquier chat si `ALLOWED_CHAT_IDS` está vacío (⚠️ gasta tu cuota; solo para pruebas) |
 | `AI_PROVIDER` | opcional | `opencode` · `gemini` · `openai` · `claude` · `openrouter` · `groq` · `none` |
 | `AI_MODEL` | opcional | Fuerza un modelo concreto (si no, usa el default del proveedor) |
 | `*_API_KEY` | según proveedor | `OPENCODE_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `GROQ_API_KEY` |
@@ -65,8 +66,8 @@ proveedor) y mismas columnas del export de siempre. No necesita
 completas: `npm run scrape -- --help`.
 
 `--format directory` genera el `listings-data.csv` de la plantilla
-`business-directory-astro`: las 51 columnas del directorio, id y slug estables
-(desde `place_id`/cid, así un refresco no rompe enlaces), horarios repartidos en
+`business-directory-astro`: las 51 columnas del directorio, id estable (`place_id`/cid) y slug estable
+(los títulos repetidos reciben un sufijo derivado del `place_id`, no del orden de llegada; el país sale del proveedor o, si falta, del `--gl` de la búsqueda), horarios repartidos en
 `monday..sunday` y `photo`←thumbnail. Sirve directamente para
 `npm run process-listings listings-scraped.csv` en el directorio.
 En el bot también está: con `/directorio <búsqueda>`, pidiéndolo en lenguaje natural
@@ -79,7 +80,7 @@ En el bot también está: con `/directorio <búsqueda>`, pidiéndolo en lenguaje
 |---|---|
 | `/buscar dentistas en Santo Domingo` | Búsqueda directa sin IA |
 | `/directorio restaurantes en Las Terrenas` | Igual que `/buscar`, pero el 📄 CSV sale en formato `listings-data.csv` de la plantilla de directorios |
-| *(texto libre)* | El agente IA interpreta: *"cafeterías sin web en Madrid con menos de 20 reseñas"* o *"trae los listings de dentistas en Santiago para el directorio"* (último → CSV del directorio) |
+| *(texto libre)* | Requiere IA activa (sin IA o si no logra interpretarlo, el bot **no** lanza ninguna búsqueda: usa `/buscar`). El agente IA interpreta: *"cafeterías sin web en Madrid con menos de 20 reseñas"* o *"trae los listings de dentistas en Santiago para el directorio"* (último → CSV del directorio) |
 | `/pais do` · `/idioma es` · `/max 40` · `/max todo` | Ajustes por defecto (`/max todo` = sin límite) |
 | `/proveedor anyapi` | Fuente de datos: `auto` · `anyapi` · `serpapi` · `mock` (`/proveedor` sin argumentos la muestra) |
 | `/ajustes` | Ver configuración actual |
@@ -196,7 +197,10 @@ Los textos de `HELP_TEXT` y `SYSTEM_PROMPT` usan HTML de Telegram (`<b>`, `<code
 | Detalle de un negocio (`type=place`) | 1 **por negocio** | `ENRICH_DETAILS=false` (default) → 0 |
 | IA (interpretar el texto) | no usa SerpAPI | `AI_PROVIDER=none` la desactiva |
 
-- `ALLOWED_CHAT_IDS` + `MAX_RESULTS` protegen tu cuota de búsquedas.
+- `ALLOWED_CHAT_IDS` + `MAX_RESULTS` protegen tu cuota de búsquedas. Sin `ALLOWED_CHAT_IDS` el bot está cerrado.
+- El texto libre nunca dispara una búsqueda de pago "por si acaso": si la IA está apagada o falla, el bot pide usar `/buscar`.
+- Una búsqueda a la vez por chat. El bot corre con `@grammyjs/runner`, así que una búsqueda larga no bloquea los botones ni otros chats.
+- Los enlaces de Google Maps se validan por hostname exacto (`google.*`, `maps.app.goo.gl`) antes de que el servidor haga ninguna petición.
 - La IA solo se usa para interpretar el texto (respuesta corta y barata); si falla, el bot hace la búsqueda con el texto tal cual.
 - Con `ENRICH_DETAILS=false` el coste por búsqueda es **1 crédito por página** (igual que Prospect Hub); los campos que solo da el detalle (`website` que falta, `check_in_time`…) quedan vacíos.
 - El coste real de AnyAPI se acumula por sesión y aparece en el preview y en los logs (`[anyapi] nearby … $0.0013`).

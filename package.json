@@ -14,6 +14,7 @@
     "scrape": "tsx scripts/scrape.ts"
   },
   "dependencies": {
+    "@grammyjs/runner": "^2.0.3",
     "dotenv": "^17.2.3",
     "grammy": "^1.39.0",
     "serpapi": "^2.2.1",

@@ -103,6 +103,8 @@ export const config = {
   provider: providerEnv(),
   mapboxToken: strEnv("MAPBOX_TOKEN", ""),
   allowedChatIds,
+  // Solo si pones ALLOW_OPEN_BOT=true el bot responde a cualquier chat (gasta TU cuota)
+  allowOpenBot: boolEnv("ALLOW_OPEN_BOT", false),
   // 0 = sin límite (trae todas las páginas disponibles)
   maxResults: maxResultsEnv(),
   maxResultsCap: MAX_RESULTS_CAP,
@@ -157,10 +159,14 @@ if (config.serpapiKey) {
 }
 
 if (config.allowedChatIds.length === 0) {
-  console.warn("[config] ALLOWED_CHAT_IDS vacío → el bot está ABIERTO a cualquier chat. Rellena esa env para restringirlo.");
+  console.warn(
+    config.allowOpenBot
+      ? "[config] ALLOW_OPEN_BOT=true y ALLOWED_CHAT_IDS vacío → el bot está ABIERTO a cualquier chat y gasta tu cuota."
+      : "[config] ALLOWED_CHAT_IDS vacío → el bot rechaza a todos los chats (cerrado por defecto). Escríbele al bot: te dirá tu chat id para ponerlo en .env."
+  );
 }
 
 export function isChatAllowed(chatId: number): boolean {
-  if (config.allowedChatIds.length === 0) return true;
+  if (config.allowedChatIds.length === 0) return config.allowOpenBot;
   return config.allowedChatIds.includes(String(chatId));
 }

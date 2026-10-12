@@ -1,3 +1,4 @@
+import { run } from "@grammyjs/runner";
 import { config } from "./config";
 import { createBot } from "./bot";
 
@@ -25,13 +26,22 @@ async function main() {
     `[bot] @${me.username} iniciado (proveedor: ${config.provider}, IA: ${config.ai.enabled && config.ai.apiKey ? `${config.ai.provider}/${config.ai.model}` : "off"})`
   );
 
+  // Runner: procesa updates en paralelo (una búsqueda larga ya no bloquea botones ni otros chats).
+  // La exclusión por chat la hace el guard `busy` de runSearch/loadMore.
+  const runner = run(bot);
+  console.log("[bot] polling activo (runner concurrente). Esperando mensajes…");
+
+  const stop = () => {
+    if (runner.isRunning()) runner.stop();
+  };
+  process.once("SIGINT", stop);
+  process.once("SIGTERM", stop);
+
   try {
-    await bot.start({
-      onStart: () => console.log("[bot] polling activo. Esperando mensajes…"),
-    });
+    await runner.task();
   } catch (error) {
-    const description = String((error as { description?: string })?.description ?? "");
-    if (description.includes("409")) {
+    // 409 viene en error_code (la description es "Conflict: terminated by other getUpdates…")
+    if ((error as { error_code?: number })?.error_code === 409) {
       console.error("");
       console.error("[bot] ⚠️  Telegram dice que YA hay otra instancia conectada (409 Conflict).");
       console.error('     Detén la otra con:  pkill -f "tsx src/index.ts"  y relanza este.');

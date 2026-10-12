@@ -146,6 +146,12 @@ async function runSearch(
   const chatId = ctx.chat?.id;
   if (!chatId) return;
 
+  // Una búsqueda a la vez por chat: evita pagar dos veces y sesiones pisadas
+  if (getSession(chatId)?.busy) {
+    await ctx.reply("⏳ Ya hay una búsqueda en curso en este chat. Espera a que termine.");
+    return;
+  }
+
   const session = createSession(chatId, params, filters);
   session.exportFormat = directory ? "directory" : "leads";
   session.busy = true;
@@ -313,7 +319,7 @@ async function sendExport(ctx: Context, ext: "csv" | "json" | "directory"): Prom
 
   const label = ext === "directory" ? "DIRECTORIO" : ext.toUpperCase();
   await ctx.answerCallbackQuery({ text: `Generando ${label}…` });
-  const buffer = ext === "directory" ? buildDirectoryCSV(data) : ext === "csv" ? buildCSV(data) : buildJSON(data);
+  const buffer = ext === "directory" ? buildDirectoryCSV(data, session.params.gl) : ext === "csv" ? buildCSV(data) : buildJSON(data);
   const filename = ext === "directory" ? "listings-data.csv" : exportFilename(ext === "json" ? "json" : "csv");
   const active = activeFilterLabels(session.filters);
   const caption =
@@ -334,8 +340,15 @@ export function createBot(): Bot {
   bot.use(async (ctx, next) => {
     const id = ctx.chat?.id ?? ctx.from?.id;
     if (id && !isChatAllowed(id)) {
-      if (ctx.message) await ctx.reply("🔒 No estás autorizado para usar este bot.");
-      else await ctx.answerCallbackQuery({ text: "No autorizado" }).catch(() => {});
+      console.warn(`[bot] chat no autorizado: ${id}`);
+      if (ctx.message) {
+        await ctx.reply(
+          `🔒 No estás autorizado para usar este bot.\nTu chat id es <code>${id}</code> — si eres el dueño, añádelo a <code>ALLOWED_CHAT_IDS</code> en .env y reinicia.`,
+          HTML
+        );
+      } else {
+        await ctx.answerCallbackQuery({ text: "No autorizado" }).catch(() => {});
+      }
       return;
     }
     await next();
@@ -464,7 +477,9 @@ export function createBot(): Bot {
     const access =
       config.allowedChatIds.length > 0
         ? `🔒 whitelist: ${config.allowedChatIds.length} chat(s)`
-        : "⚠️ abierto a cualquier chat (define ALLOWED_CHAT_IDS)";
+        : config.allowOpenBot
+          ? "⚠️ abierto a cualquier chat (ALLOW_OPEN_BOT=true)"
+          : "🔒 cerrado: define ALLOWED_CHAT_IDS";
     await ctx.reply(
       `<b>Ajustes actuales</b>\n🌍 País: <b>${prefs.gl.toUpperCase()}</b>\n🗣 Idioma: <b>${prefs.hl}</b>\n📊 Máx. resultados: <b>${prefs.max || "todos"}</b>\n${scraper}\n${ai}\n${access}`,
       HTML
@@ -511,49 +526,60 @@ export function createBot(): Bot {
       return;
     }
 
-    if (aiAvailable()) {
-      const status = await ctx.reply("🧠 Pensando…");
-      try {
-        const result = await classifyMessage(text, defaults, getHistory(ctx.chat.id));
+    // Sin IA no se adivina la intención: un "hola" no debe costar créditos
+    if (!aiAvailable()) {
+      await ctx.reply(
+        "La IA está desactivada, así que no interpreto texto libre. Usa <code>/buscar dentistas en Santo Domingo</code> o <code>/ayuda</code>.",
+        HTML
+      );
+      return;
+    }
 
-        // Conversación: saludos, dudas, preguntas sobre el bot…
-        if (result?.kind === "chat") {
-          pushHistory(ctx.chat.id, text, result.reply);
-          await ctx.api.editMessageText(ctx.chat.id, status.message_id, result.reply);
-          return;
-        }
+    const status = await ctx.reply("🧠 Pensando…");
+    try {
+      const result = await classifyMessage(text, defaults, getHistory(ctx.chat.id));
 
-        // Búsqueda en lenguaje natural
-        if (result?.kind === "search") {
-          const active = Object.keys(result.filters).length
-            ? " · 🎯 " + esc(activeFilterLabels(result.filters as Filters).join(", "))
-            : "";
-          const dir = result.directory ? " · 📁 directorio" : "";
-          await ctx.api.editMessageText(
-            ctx.chat.id,
-            status.message_id,
-            `🧠 <b>${esc(result.params.query)}</b> · ${result.params.gl.toUpperCase()}${active}${dir}`,
-            HTML
-          );
-          pushHistory(ctx.chat.id, text, `Búsqueda ejecutada: "${result.params.query}" (${result.params.gl.toUpperCase()})${result.directory ? " · formato directorio" : ""}`);
-          await runSearch(ctx, result.params, result.filters, status.message_id, result.directory === true);
-          return;
-        }
+      // Conversación: saludos, dudas, preguntas sobre el bot…
+      if (result?.kind === "chat") {
+        pushHistory(ctx.chat.id, text, result.reply);
+        await ctx.api.editMessageText(ctx.chat.id, status.message_id, result.reply);
+        return;
+      }
 
+      // Búsqueda en lenguaje natural
+      if (result?.kind === "search") {
+        const active = Object.keys(result.filters).length
+          ? " · 🎯 " + esc(activeFilterLabels(result.filters as Filters).join(", "))
+          : "";
+        const dir = result.directory ? " · 📁 directorio" : "";
         await ctx.api.editMessageText(
           ctx.chat.id,
           status.message_id,
-          "No pude interpretarlo con IA. Búsqueda directa:",
+          `🧠 <b>${esc(result.params.query)}</b> · ${result.params.gl.toUpperCase()}${active}${dir}`,
           HTML
         );
-      } catch (error: any) {
-        await ctx.api
-          .editMessageText(ctx.chat.id, status.message_id, `⚠️ IA: ${esc(error?.message || error)}. Búsqueda directa:`, HTML)
-          .catch(() => {});
+        pushHistory(ctx.chat.id, text, `Búsqueda ejecutada: "${result.params.query}" (${result.params.gl.toUpperCase()})${result.directory ? " · formato directorio" : ""}`);
+        await runSearch(ctx, result.params, result.filters, status.message_id, result.directory === true);
+        return;
       }
-    }
 
-    await runSearch(ctx, { query: text, gl: prefs.gl, hl: prefs.hl, max: prefs.max });
+      // La IA no pudo interpretarlo: se pide un comando explícito en vez de gastar una búsqueda
+      await ctx.api.editMessageText(
+        ctx.chat.id,
+        status.message_id,
+        "No pude interpretar eso como una búsqueda. Prueba con <code>/buscar &lt;negocio&gt; en &lt;ciudad&gt;</code>.",
+        HTML
+      );
+    } catch (error: any) {
+      await ctx.api
+        .editMessageText(
+          ctx.chat.id,
+          status.message_id,
+          `⚠️ IA: ${esc(error?.message || error)}.\nUsa <code>/buscar &lt;negocio&gt; en &lt;ciudad&gt;</code> para buscar sin IA.`,
+          HTML
+        )
+        .catch(() => {});
+    }
   });
 
   // Botones
@@ -607,6 +633,10 @@ export function createBot(): Bot {
   });
 
   bot.callbackQuery("reset", async (ctx) => {
+    if (ctx.chat && getSession(ctx.chat.id)?.busy) {
+      await ctx.answerCallbackQuery({ text: "Espera a que termine la búsqueda actual…" });
+      return;
+    }
     if (ctx.chat) clearSession(ctx.chat.id);
     await ctx.answerCallbackQuery({ text: "Búsqueda borrada" });
     await ctx.editMessageText("🔄 Borrado. Escribe tu próxima búsqueda o usa <code>/buscar …</code>", {

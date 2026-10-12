@@ -9,29 +9,45 @@ export interface ParsedMapsUrl {
 
 const SHORT_HOSTS = ["maps.app.goo.gl", "goo.gl"];
 
-export function extractMapsUrl(text: string): string | null {
-  const match = text.match(/https?:\/\/[^\s<>"]+/);
-  if (!match) return null;
-  let url = match[0];
-  // corta paréntesis de cierre que suelen pegarse al final
-  url = url.replace(/[)\],.]+$/, "");
+// google.com, www.google.com, maps.google.com, google.es, google.com.do…
+// Comparación EXACTA del hostname: nada de "contiene", para que un dominio ajeno
+// (maps.atacante.com, google.com.evil.io) no pase por Google.
+const GOOGLE_HOST_RE = /^(?:[a-z0-9-]+\.)*google\.(?:com|[a-z]{2}|com?\.[a-z]{2})$/;
+
+function hostnameOf(url: string): string | null {
   try {
-    const host = new URL(url).hostname.replace(/^www\./, "");
-    const isGoogleMaps =
-      (host === "google.com" || host.endsWith(".google.com") || /^maps\./.test(host) || host === "g.co") &&
-      /\/maps\//.test(url);
-    const isShort = SHORT_HOSTS.some((h) => host === h);
-    if (isGoogleMaps || isShort) return url;
+    const u = new URL(url);
+    if (u.protocol !== "https:" && u.protocol !== "http:") return null;
+    return u.hostname.toLowerCase();
   } catch {
     return null;
   }
-  return null;
+}
+
+function isShortUrl(url: string): boolean {
+  const host = hostnameOf(url);
+  return !!host && SHORT_HOSTS.includes(host);
+}
+
+function isGoogleMapsUrl(url: string): boolean {
+  const host = hostnameOf(url);
+  if (!host || !GOOGLE_HOST_RE.test(host)) return false;
+  return /^\/maps(?:\/|$)/.test(new URL(url).pathname);
+}
+
+export function extractMapsUrl(text: string): string | null {
+  const match = text.match(/https?:\/\/[^\s<>"]+/);
+  if (!match) return null;
+  // corta paréntesis de cierre que suelen pegarse al final
+  const url = match[0].replace(/[)\],.]+$/, "");
+  return isGoogleMapsUrl(url) || isShortUrl(url) ? url : null;
 }
 
 async function resolveShortUrl(url: string): Promise<string> {
   try {
     const res = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(10_000) });
-    return res.url || url;
+    // Solo aceptamos el destino si sigue siendo Google Maps (nunca un host arbitrario)
+    return res.url && isGoogleMapsUrl(res.url) ? res.url : url;
   } catch {
     return url;
   }
@@ -61,9 +77,13 @@ export function parseMapsUrl(url: string): ParsedMapsUrl {
 
   // /maps?api=1&query=…  ·  /maps?…&q=…
   if (!out.query) {
-    const u = new URL(url);
-    const q = u.searchParams.get("query") || u.searchParams.get("q") || u.searchParams.get("query_place_id");
-    if (q) out.query = decodePath(q);
+    try {
+      const u = new URL(url);
+      const q = u.searchParams.get("query") || u.searchParams.get("q") || u.searchParams.get("query_place_id");
+      if (q) out.query = decodePath(q);
+    } catch {
+      // URL malformada: sin query
+    }
   }
 
   return out;
@@ -98,7 +118,7 @@ export async function interpretMapsLink(text: string): Promise<{
   const raw = extractMapsUrl(text);
   if (!raw) return null;
 
-  const url = SHORT_HOSTS.some((h) => raw.includes(h)) ? await resolveShortUrl(raw) : raw;
+  const url = isShortUrl(raw) ? await resolveShortUrl(raw) : raw;
   const parsed = parseMapsUrl(url);
   if (!parsed.query) return null;
 
