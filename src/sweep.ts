@@ -1,5 +1,13 @@
 import { config } from "./config";
-import { countryLabel, geocodeArea, gridCells, pointInArea } from "./geo";
+import {
+  countryLabel,
+  geocodeArea,
+  geocodePoint,
+  gridCells,
+  normalizeAreaName,
+  pointInArea,
+  type AreaGeometry,
+} from "./geo";
 import { resultKey, searchAll, type ResolvedPage } from "./scraper";
 import type { Business, ProviderId, SearchParams } from "./types";
 
@@ -32,6 +40,40 @@ export function areaName(params: SearchParams): string | null {
   const m = (params.query || "").match(/\s+(?:en|in|near)\s+(.+)$/i);
   const tail = m?.[1]?.trim() || "";
   return tail.length >= 3 ? tail : null;
+}
+
+// Decide si un negocio pertenece al área: por sus coordenadas (polígono), geocodificando
+// su dirección/localidad/CP si no las tiene, o comparando la provincia con el área pedida.
+async function withinArea(
+  b: Business,
+  geo: { label: string; bbox?: [number, number, number, number]; geometry?: AreaGeometry },
+  onGeocode: () => void
+): Promise<"in" | "out" | "unknown"> {
+  const lat = b.gps_coordinates?.latitude;
+  const lng = b.gps_coordinates?.longitude;
+  if (typeof lat === "number" && typeof lng === "number") {
+    return pointInArea(lat, lng, geo.geometry) ? "in" : "out";
+  }
+
+  // Sin coordenadas: geocodifico la dirección acotada a la caja del área.
+  const address = [b.street || b.address, b.locality, b.postal_code, b.province, b.country]
+    .filter(Boolean)
+    .join(", ");
+  if (address && geo.bbox) {
+    onGeocode();
+    const hit = await geocodePoint(address, { bbox: geo.bbox });
+    if (hit) return pointInArea(hit.lat, hit.lng, geo.geometry) ? "in" : "out";
+  }
+
+  // Último recurso: comparo el nombre del área con provincia/localidad/dirección.
+  const target = normalizeAreaName(geo.label.split(",")[0] || geo.label);
+  const province = normalizeAreaName(b.province || "");
+  const fields = [b.province, b.locality, b.address]
+    .filter(Boolean)
+    .map((v) => normalizeAreaName(String(v)));
+  if (target && fields.some((f) => f && (f.includes(target) || target.includes(f)))) return "in";
+  if (province && target && !province.includes(target) && !target.includes(province)) return "out";
+  return "unknown";
 }
 
 // Geocodifica el área; primero con el país (para desambiguar) y si falla, sin él.
@@ -101,26 +143,28 @@ export async function searchArea(
   }
 
   // La rejilla es rectangular: descartamos lo que caiga fuera del polígono real
-  // de la provincia/región. Los negocios sin coordenadas no se pueden comprobar.
+  // de la provincia/región. Los negocios sin coordenadas se comprueban por dirección.
   let results = collected;
   let outside = 0;
   let unchecked = 0;
+  let relocated = 0;
   if (geo.geometry) {
-    results = collected.filter((b) => {
-      const lat = b.gps_coordinates?.latitude;
-      const lng = b.gps_coordinates?.longitude;
-      if (typeof lat !== "number" || typeof lng !== "number") {
+    const kept: Business[] = [];
+    for (const b of collected) {
+      const verdict = await withinArea(b, geo, () => relocated++);
+      if (verdict === "in") kept.push(b);
+      else if (verdict === "out") outside++;
+      else {
         unchecked++;
-        return true;
+        kept.push(b);
       }
-      const inside = pointInArea(lat, lng, geo.geometry);
-      if (!inside) outside++;
-      return inside;
-    });
+    }
+    results = kept;
     console.log(
       `[sweep] ${results.length}/${collected.length} dentro del área` +
         `${outside ? ` · ${outside} fuera descartados` : ""}` +
-        `${unchecked ? ` · ${unchecked} sin coordenadas (sin comprobar)` : ""}`
+        `${relocated ? ` · ${relocated} verificados por dirección` : ""}` +
+        `${unchecked ? ` · ${unchecked} sin verificar` : ""}`
     );
   }
 

@@ -67,6 +67,56 @@ export async function geocodeArea(query: string): Promise<GeoArea | null> {
   }
 }
 
+export interface PointHit {
+  lat: number;
+  lng: number;
+}
+
+// Forward geocoding de una dirección (calle/localidad/CP/provincia), opcionalmente
+// acotado a la caja del área para no resolver a una dirección de otra provincia.
+export async function geocodePoint(
+  query: string,
+  opts: { bbox?: [number, number, number, number] } = {}
+): Promise<PointHit | null> {
+  const q = query.trim();
+  if (!q) return null;
+
+  await throttle();
+  try {
+    const params = new URLSearchParams({ format: "json", limit: "1", q });
+    if (opts.bbox) {
+      const [south, north, west, east] = opts.bbox;
+      // Nominatim: viewbox = left,top,right,bottom
+      params.set("viewbox", `${west},${north},${east},${south}`);
+      params.set("bounded", "1");
+    }
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
+      headers: { "User-Agent": USER_AGENT },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return null;
+    const data: any = await res.json();
+    const hit = Array.isArray(data) ? data[0] : null;
+    if (!hit) return null;
+    const lat = parseFloat(hit.lat);
+    const lng = parseFloat(hit.lon);
+    return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+  } catch {
+    return null;
+  }
+}
+
+// Normaliza un nombre de área para comparar ("Provincia de Samaná" ≈ "Samaná").
+export function normalizeAreaName(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\b(provincia|province|region|región|estado|state|departamento|department|distrito|municipio|de|del|of)\b/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
 // Punto-en-polígono (ray casting). `ring` usa coordenadas [lng, lat].
 function inRing(lng: number, lat: number, ring: number[][]): boolean {
   let inside = false;

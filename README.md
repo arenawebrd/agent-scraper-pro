@@ -105,8 +105,10 @@ rejilla**:
    (mismo `ll` para AnyAPI y SerpAPI → misma cobertura en ambos).
 3. **Une y deduplica** por `place_id`/`cid`, así que un negocio visto en dos celdas cuenta una vez.
 4. **Filtra por el polígono real** del área (no por la caja): descarta lo que caiga fuera de
-   la provincia/región, así no se cuelan resultados de provincias vecinas. Los negocios sin
-   coordenadas no se pueden comprobar y se conservan (se avisa en el log cuántos son).
+   la provincia/región, así no se cuelan resultados de provincias vecinas. Si a un negocio le
+   faltan coordenadas, se intenta geocodificar su dirección/localidad/CP (acotada al área) y,
+   como último recurso, se compara su provincia con la pedida. Los que no se pueden verificar
+   se conservan y se avisa en el log.
 
 Coste y control: **cada celda es una búsqueda** (AnyAPI ≈ $0.0013 · SerpAPI = 1 crédito),
 por eso `MAPS_MAX_CELLS` (default `30`) es un tope duro y `MAPS_MAX_PER_CELL` (default `20`)

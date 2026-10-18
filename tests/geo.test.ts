@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { countryLabel, gridCells, pointInArea, type AreaGeometry } from "../src/geo";
+import {
+  countryLabel,
+  gridCells,
+  normalizeAreaName,
+  pointInArea,
+  type AreaGeometry,
+} from "../src/geo";
 
 const square: AreaGeometry = {
   type: "Polygon",
@@ -42,6 +48,12 @@ test("pointInArea: respeta los huecos del polígono", () => {
   };
   assert.equal(pointInArea(0.5, 0.5, withHole), true);
   assert.equal(pointInArea(2, 2, withHole), false);
+});
+
+test("normalizeAreaName: acentos y prefijos de tipo", () => {
+  assert.equal(normalizeAreaName("Provincia de Samaná"), "samana");
+  assert.equal(normalizeAreaName("Samaná"), "samana");
+  assert.equal(normalizeAreaName("Santo Domingo Province"), "santo domingo");
 });
 
 test("pointInArea: MultiPolygon y sin geometría", () => {
