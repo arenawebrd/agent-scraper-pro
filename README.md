@@ -32,6 +32,8 @@ cp .env.example .env   # y rellena tus claves
 | `*_API_KEY` | según proveedor | `OPENCODE_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `GROQ_API_KEY` |
 | `MAX_RESULTS` | opcional | Resultados por búsqueda: `0` / `todo` (default) = **todos los disponibles** · número = tope (máx 200) |
 | `DEFAULT_GL` / `DEFAULT_HL` | opcional | País e idioma por defecto (default `do` / `es`) |
+| `MAPS_MAX_CELLS` | opcional | Barrido por provincia: nº máx. de celdas a recorrer (default `30`). El coste = celdas × páginas |
+| `MAPS_MAX_PER_CELL` | opcional | Barrido por provincia: resultados por celda (default `20` = 1 página por celda) |
 
 ## Uso
 
@@ -60,6 +62,7 @@ Para alimentar otros proyectos (p. ej. los directorios Astro) sin pasar por el b
 npm run scrape -- "restaurantes en Las Terrenas" --max 40 -o restaurantes.csv
 npm run scrape -- "dentistas Santiago" --sin-web --format json
 npm run scrape -- "restaurantes en Las Terrenas" --format directory -o listings-scraped.csv
+npm run scrape -- --provincia "farmacias en Samaná" -o farmacias-samana.csv
 ```
 
 Misma fachada que el bot (`searchAll`: paginación sin límite, dedupe y fallback de
@@ -83,11 +86,33 @@ En el bot también está: con `/directorio <búsqueda>`, pidiéndolo en lenguaje
 |---|---|
 | `/buscar dentistas en Santo Domingo` | Búsqueda directa sin IA |
 | `/directorio restaurantes en Las Terrenas` | Igual que `/buscar`, pero el 📄 CSV sale en formato `listings-data.csv` de la plantilla de directorios |
-| *(texto libre)* | Requiere IA activa (sin IA o si no logra interpretarlo, el bot **no** lanza ninguna búsqueda: usa `/buscar`). El agente IA interpreta: *"cafeterías sin web en Madrid con menos de 20 reseñas"* o *"trae los listings de dentistas en Santiago para el directorio"* (último → CSV del directorio) |
+| `/provincia farmacias en Samaná` | **Barrido de toda la provincia/región**: geocodifica el área, la trocea en una rejilla y busca en cada celda (no solo la capital). Ver *Barrido por provincia* |
+| *(texto libre)* | Requiere IA activa (sin IA o si no logra interpretarlo, el bot **no** lanza ninguna búsqueda: usa `/buscar`). El agente IA interpreta: *"cafeterías sin web en Madrid con menos de 20 reseñas"*, *"trae los listings de dentistas en Santiago para el directorio"* (→ CSV del directorio) o *"todas las farmacias de la provincia de Samaná"* (→ barrido de provincia) |
 | `/pais do` · `/idioma es` · `/max 40` · `/max todo` | Ajustes por defecto (`/max todo` = sin límite) |
 | `/proveedor anyapi` | Fuente de datos: `auto` · `anyapi` · `serpapi` · `mock` (`/proveedor` sin argumentos la muestra) |
 | `/ajustes` | Ver configuración actual |
 | `/ayuda` | Instrucciones |
+
+### Barrido por provincia/región
+
+Cuando quieres **toda** una provincia/región (no una sola ciudad), `/provincia` (o el
+lenguaje natural con `scope="province"`, o `--provincia` en el CLI) hace un **barrido en
+rejilla**:
+
+1. **Geocodifica** el área con Nominatim y obtiene su caja envolvente (`boundingbox`). Es
+   **agnóstico del país**: vale igual para "Samaná", "Pichincha", "Lombardía" u "Ontario".
+2. **Trocea** la caja en celdas con solape (separación ≈ radio × 1.3) y busca en cada una
+   (mismo `ll` para AnyAPI y SerpAPI → misma cobertura en ambos).
+3. **Une y deduplica** por `place_id`/`cid`, así que un negocio visto en dos celdas cuenta una vez.
+
+Coste y control: **cada celda es una búsqueda** (AnyAPI ≈ $0.0013 · SerpAPI = 1 crédito),
+por eso `MAPS_MAX_CELLS` (default `30`) es un tope duro y `MAPS_MAX_PER_CELL` (default `20`)
+limita las páginas por celda. Cuanto más grande la provincia, más celdas hacen falta; si la
+estimación supera el tope verás `⚠️ tope alcanzado (sube MAPS_MAX_CELLS)`.
+
+Salvedad: Google Maps nunca garantiza el 100% de las fichas; la rejilla **maximiza** la
+cobertura, no la vuelve infinita. Si el nombre es ambiguo (una ciudad y una provincia con el
+mismo nombre), añade el país al pedirlo o sube `MAPS_MAX_CELLS`.
 
 ### Después de cada búsqueda
 
@@ -156,6 +181,8 @@ Como no expone puertos ni monta volúmenes, no choca con los demás servicios de
 
 ```
 Telegram → bot.ts → agent.ts (IA: texto → parámetros)
+                        ↓
+             sweep.ts (opcional: rejilla por provincia) → geo.ts (Nominatim)
                         ↓
                   scraper.ts (elige proveedor + fallback + dedupe)
                         ↓

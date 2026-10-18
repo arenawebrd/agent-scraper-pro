@@ -6,8 +6,9 @@ import { buildCSV, buildJSON, exportFilename } from "./export";
 import { buildDirectoryCSV } from "./directory";
 import { interpretMapsLink } from "./gmaps";
 import { esc, FILTER_KEYS, filtersKeyboard, mainKeyboard, renderPreview } from "./render";
-import { autoOrder, providerStatus, resultKey, searchAll, searchPage } from "./scraper";
+import { autoOrder, providerStatus, resultKey, searchAll, searchPage, type ResolvedPage } from "./scraper";
 import { clearSession, createSession, getHistory, getPrefs, getSession, pushHistory, updatePrefs } from "./session";
+import { searchArea, type SweepResult } from "./sweep";
 import { HELP_TEXT } from "./texts";
 import type { Filters, ProviderId, SearchParams } from "./types";
 
@@ -19,7 +20,8 @@ async function runSearch(
   params: SearchParams,
   filters: Partial<Filters> = {},
   statusId?: number,
-  directory = false
+  directory = false,
+  sweep = false
 ): Promise<void> {
   const chatId = ctx.chat?.id;
   if (!chatId) return;
@@ -45,33 +47,42 @@ async function runSearch(
   } else {
     statusId2 = (await ctx.reply(statusText, HTML)).message_id;
   }
+  const progress = async (text: string) => {
+    await ctx.api
+      .editMessageText(chatId, statusId2!, text, HTML)
+      .catch((e: any) => console.warn(`[bot] edit de progreso falló: ${e?.description || e?.message}`));
+  };
+
   try {
     let pages = 0;
-    const page = await searchAll(
-      params,
-      async (collected) => {
-        pages++;
-        await ctx.api
-          .editMessageText(
-            chatId,
-            statusId2!,
-            `⏳ Buscando <b>${esc(params.query)}</b>…\n📄 página ${pages} · ${collected} resultados`,
-            HTML
-          )
-          .catch((e: any) => console.warn(`[bot] edit de progreso falló: ${e?.description || e?.message}`));
-      },
-      prefs.provider
-    );
+    let cells = 1;
+    let page: ResolvedPage;
+    if (sweep) {
+      page = await searchArea(params, prefs.provider, {
+        onCell: (done, total, found) =>
+          progress(`⏳ Barriendo <b>${esc(params.query)}</b>…\n🗺 celda ${done}/${total} · ${found} resultados`),
+      });
+      cells = (page as SweepResult).cells;
+    } else {
+      page = await searchAll(
+        params,
+        async (collected) => {
+          pages++;
+          await progress(`⏳ Buscando <b>${esc(params.query)}</b>…\n📄 página ${pages} · ${collected} resultados`);
+        },
+        prefs.provider
+      );
+    }
 
     session.results = page.results;
     session.hasMore = page.hasMore;
     session.token = page.nextToken ?? 0;
     session.provider = page.provider;
     session.costUsd = page.costUsd ?? 0;
-    session.pages = Math.max(pages, 1);
+    session.pages = sweep ? cells : Math.max(pages, 1);
     session.busy = false;
     console.log(
-      `[bot] → ${session.results.length} resultados en ${session.pages} página(s), hasMore=${page.hasMore}, proveedor=${page.provider}, coste=$${session.costUsd.toFixed(4)}`
+      `[bot] → ${session.results.length} resultados en ${sweep ? `${cells} celdas` : `${session.pages} página(s)`}, hasMore=${page.hasMore}, proveedor=${page.provider}, coste=$${session.costUsd.toFixed(4)}`
     );
 
     if (session.results.length === 0) {
@@ -255,6 +266,16 @@ export function createBot(): Bot {
     await runSearch(ctx, { query, gl: prefs.gl, hl: prefs.hl, max: prefs.max }, {}, undefined, true);
   });
 
+  bot.command("provincia", async (ctx) => {
+    const query = String(ctx.match || "").trim();
+    if (!query) {
+      await ctx.reply("Usa: <code>/provincia farmacias en Samaná</code>", HTML);
+      return;
+    }
+    const prefs = getPrefs(ctx.chat!.id);
+    await runSearch(ctx, { query, gl: prefs.gl, hl: prefs.hl, max: prefs.max }, {}, undefined, false, true);
+  });
+
   bot.command("pais", async (ctx) => {
     const code = String(ctx.match || "").trim().toLowerCase();
     if (!/^[a-z]{2}$/.test(code)) {
@@ -426,14 +447,20 @@ export function createBot(): Bot {
           ? " · 🎯 " + esc(activeFilterLabels(result.filters as Filters).join(", "))
           : "";
         const dir = result.directory ? " · 📁 directorio" : "";
+        const sweep = result.scope === "province";
+        const zone = sweep ? " · 🗺 provincia" : "";
         await ctx.api.editMessageText(
           ctx.chat.id,
           status.message_id,
-          `🧠 <b>${esc(result.params.query)}</b> · ${result.params.gl.toUpperCase()}${active}${dir}`,
+          `🧠 <b>${esc(result.params.query)}</b> · ${result.params.gl.toUpperCase()}${active}${dir}${zone}`,
           HTML
         );
-        pushHistory(ctx.chat.id, text, `Búsqueda ejecutada: "${result.params.query}" (${result.params.gl.toUpperCase()})${result.directory ? " · formato directorio" : ""}`);
-        await runSearch(ctx, result.params, result.filters, status.message_id, result.directory === true);
+        pushHistory(
+          ctx.chat.id,
+          text,
+          `Búsqueda ejecutada: "${result.params.query}" (${result.params.gl.toUpperCase()})${result.directory ? " · formato directorio" : ""}${sweep ? " · barrido de provincia" : ""}`
+        );
+        await runSearch(ctx, result.params, result.filters, status.message_id, result.directory === true, sweep);
         return;
       }
 

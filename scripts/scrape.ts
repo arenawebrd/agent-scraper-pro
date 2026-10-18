@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { config, PROVIDER_IDS } from "../src/config";
 import { searchAll } from "../src/scraper";
+import { searchArea } from "../src/sweep";
 import { buildCSV, buildJSON, exportFilename } from "../src/export";
 import { buildDirectoryCSV } from "../src/directory";
 import { applyFilters } from "../src/filters";
@@ -24,6 +25,8 @@ Opciones:
   --provider, -p P     auto | anyapi | serpapi | mock (default: MAPS_PROVIDER del .env)
   --gl XX --hl XX      País e idioma (default: DEFAULT_GL/DEFAULT_HL del .env)
   --location "Ciudad"  Ciudad/zona para geocodificar (SerpAPI/AnyAPI)
+  --provincia          Barre TODA la provincia/región del texto (rejilla)
+                       ej: --provincia "farmacias en Samaná"
   --sin-web            Filtra los que ya tienen página web
   --sin-telefono       Filtra los que ya tienen teléfono
   --sin-fotos          Filtra los que ya tienen fotos
@@ -46,6 +49,7 @@ interface CliArgs {
   gl?: string;
   hl?: string;
   location?: string;
+  province: boolean;
   filters: Filters;
   help: boolean;
 }
@@ -60,6 +64,7 @@ function parseArgs(argv: string[]): CliArgs {
   let gl: string | undefined;
   let hl: string | undefined;
   let location: string | undefined;
+  let province = false;
   let help = false;
 
   const value = (i: number, flag: string): string => {
@@ -108,6 +113,9 @@ function parseArgs(argv: string[]): CliArgs {
       case "-l":
         location = value(i++, "--location");
         break;
+      case "--provincia":
+        province = true;
+        break;
       case "--sin-web":
         filters.sinWeb = true;
         break;
@@ -129,7 +137,7 @@ function parseArgs(argv: string[]): CliArgs {
     }
   }
 
-  return { query: words.join(" "), max, out, format, provider, gl, hl, location, filters, help };
+  return { query: words.join(" "), max, out, format, provider, gl, hl, location, province, filters, help };
 }
 
 async function main() {
@@ -157,7 +165,12 @@ async function main() {
   );
 
   const started = Date.now();
-  const page = await searchAll(params, (n) => process.stdout.write(`\r  … ${n} resultados   `), args.provider);
+  const page = args.province
+    ? await searchArea(params, args.provider, {
+        onCell: (done, total, found) =>
+          process.stdout.write(`\r  … celda ${done}/${total} · ${found} resultados   `),
+      })
+    : await searchAll(params, (n) => process.stdout.write(`\r  … ${n} resultados   `), args.provider);
   process.stdout.write("\n");
 
   const results = applyFilters(page.results, args.filters);

@@ -7,6 +7,8 @@ export interface AgentSearch {
   filters: Partial<Filters>;
   // true = el usuario pide los listings "para el directorio" (CSV con sus columnas)
   directory?: boolean;
+  // "province" = barrido por toda la provincia/región (rejilla), no solo una localidad
+  scope?: "locality" | "province";
 }
 export interface AgentChat {
   kind: "chat";
@@ -83,8 +85,9 @@ CAPACIDADES DEL BOT:
 - Filtros: sin web, sin teléfono, rating bajo, pocas reseñas (<10), sin fotos
 - Exportación a CSV y JSON (nombre, dirección, teléfono, web, rating, reseñas, coordenadas, imagen, horarios)
 - Exportación "directorio": el CSV sale con las columnas de la plantilla de directorios web (listings-data.csv). Se pide diciendo "para el directorio", "los listings del directorio", "fichas del directorio" o con /directorio
+- Barrido por provincia/región completa: cuando el usuario quiere TODA una provincia/región (no una ciudad), se marca scope="province" y el bot recorre el área en rejilla para traer el máximo de fichas
 - Paginación de 20 en 20; trae todos los resultados disponibles salvo límite explícito (default: sin límite)
-- Comandos: /buscar <texto>, /pais xx, /idioma xx, /max n, /proveedor auto|anyapi|serpapi, /ajustes, /ayuda
+- Comandos: /buscar <texto>, /provincia <texto>, /pais xx, /idioma xx, /max n, /proveedor auto|anyapi|serpapi, /ajustes, /ayuda
 - Interpreta enlaces de Google Maps que le peguen
 
 DECIDE EL TIPO DE MENSAJE:
@@ -94,6 +97,7 @@ DECIDE EL TIPO DE MENSAJE:
    - location = SOLO la ciudad/zona ("Santo Domingo", "Madrid", "Barcelona"), sin el tipo de negocio. Ponla siempre que la ubiques
     - ll solo si da coordenadas; max solo si pide cantidad; filters solo si los pide explícitamente
     - "directorio": true cuando pide los listings/fichas "para el directorio" o "formato directorio" (misma búsqueda, otro CSV)
+    - scope="province" SOLO si pide TODA una provincia/región/estado ("toda la provincia de Samaná", "todas las de la provincia X", "en la provincia de X", "por toda la provincia", "toda la región de Y"). Si solo nombra una ciudad o zona → scope="locality" (o se omite)
    - Si pide buscar pero NO se puede deducir la ubicación → type="chat" con reply preguntándola (ej: "¿En qué ciudad o país los buscas?")
 2. type="chat" para todo lo demás: saludos, preguntas sobre qué puede hacer o cómo usarlo, dudas, agradecimientos, mensajes vagos o ambiguos.
    - Responde en 1-3 frases, cercano y útil, en el idioma del usuario
@@ -102,7 +106,7 @@ DECIDE EL TIPO DE MENSAJE:
    - No inventes funciones que no están listadas
 
 DEVUELVE SOLO JSON válido, sin markdown ni explicaciones:
-{"type":"search","query":string,"location":string|null,"gl":string,"hl":string,"ll":string|null,"max":number|null,"directorio":boolean,"filters":{"sinWeb":boolean,"sinTelefono":boolean,"ratingBajo":boolean,"pocasReviews":boolean,"sinFotos":boolean}}
+{"type":"search","query":string,"location":string|null,"gl":string,"hl":string,"ll":string|null,"max":number|null,"directorio":boolean,"scope":"locality"|"province","filters":{"sinWeb":boolean,"sinTelefono":boolean,"ratingBajo":boolean,"pocasReviews":boolean,"sinFotos":boolean}}
 o
 {"type":"chat","reply":string}
 
@@ -190,5 +194,11 @@ export async function classifyMessage(
     params.location = json.location.trim();
   }
 
-  return { kind: "search", params, filters, directory: json.directorio === true };
+  return {
+    kind: "search",
+    params,
+    filters,
+    directory: json.directorio === true,
+    scope: json.scope === "province" ? "province" : "locality",
+  };
 }

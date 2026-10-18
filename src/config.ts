@@ -62,6 +62,11 @@ function boolEnv(name: string, fallback: boolean): boolean {
   return ["1", "true", "yes", "on"].includes(raw.trim().toLowerCase());
 }
 
+function numEnv(name: string, fallback: number): number {
+  const n = parseInt((process.env[name] || "").trim(), 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
 // MAPS_PROVIDER: qué fuente de datos de Google Maps usa el bot
 export const PROVIDER_IDS: readonly ProviderId[] = ["auto", "serpapi", "anyapi", "mock"];
 
@@ -113,6 +118,10 @@ export const config = {
   enrichDetails: boolEnv("ENRICH_DETAILS", false),
   defaultGl: strEnv("DEFAULT_GL", "do"),
   defaultHl: strEnv("DEFAULT_HL", "es"),
+  // Barrido por provincia/región (rejilla): nº máx. de celdas y resultados por celda.
+  // El coste del barrido = celdas × páginas; el tope protege la cuota.
+  sweepMaxCells: numEnv("MAPS_MAX_CELLS", 30),
+  sweepMaxPerCell: numEnv("MAPS_MAX_PER_CELL", 20),
   previewCount: 10,
   ai: {
     provider: aiProvider,

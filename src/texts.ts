@@ -4,6 +4,7 @@ export const HELP_TEXT = `🤖 <b>Agent Scraper Pro</b> — busca prospectos en 
 <b>Modo rápido</b>
 <code>/buscar dentistas en Santo Domingo</code>
 <code>/directorio restaurantes en Las Terrenas</code> — igual, pero en formato listings-data.csv
+<code>/provincia farmacias en Samaná</code> — barre TODA la provincia (rejilla), no solo una ciudad
 
 <b>Modo agente (IA)</b> — escribe como si hablaras:
 <code>busca cafeterías sin web en Madrid con menos de 20 reseñas</code>
