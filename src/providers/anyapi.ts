@@ -30,7 +30,11 @@ function decodeToken(token: PageToken): AnyState | null {
   if (typeof token !== "string" || !token.startsWith(TOKEN_PREFIX)) return null;
   try {
     const state = JSON.parse(Buffer.from(token.slice(TOKEN_PREFIX.length), "base64url").toString("utf8"));
-    if (typeof state?.lat === "number" && typeof state?.lng === "number") return state as AnyState;
+    // Number.isFinite descarta NaN/Infinity (typeof NaN === "number")
+    if (Number.isFinite(state?.lat) && Number.isFinite(state?.lng)) {
+      const z = Number.isFinite(state?.z) ? state.z : DEFAULT_ZOOM;
+      return { lat: state.lat, lng: state.lng, z, c: typeof state?.c === "string" ? state.c : undefined };
+    }
   } catch {
     return null;
   }

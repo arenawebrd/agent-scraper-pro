@@ -1,5 +1,37 @@
-import * as XLSX from "xlsx";
 import type { Business } from "./types";
+
+// ── CSV propio (sin dependencias) ───────────────────────────
+// Antes usábamos la librería `xlsx` solo para volcar objetos a CSV;
+// arrastraba 2 CVE sin fix y no se usaba para leer nada.
+function csvCell(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  const s = typeof value === "string" ? value : String(value);
+  // Comillas solo cuando hacen falta (coma, comilla o salto de línea)
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+// Cabecera: las columnas del `header` si se da; si no, la unión de claves
+// de todas las filas en orden de aparición (como hacía json_to_sheet).
+function collectColumns(rows: Record<string, unknown>[]): string[] {
+  const cols: string[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    for (const key of Object.keys(row)) {
+      if (!seen.has(key)) {
+        seen.add(key);
+        cols.push(key);
+      }
+    }
+  }
+  return cols;
+}
+
+export function toCSV(rows: Record<string, unknown>[], header?: string[]): string {
+  const cols = header ?? collectColumns(rows);
+  const lines = [cols.map(csvCell).join(",")];
+  for (const row of rows) lines.push(cols.map((col) => csvCell(row[col])).join(","));
+  return lines.join("\n");
+}
 
 // `extensions` viene como [{service_options:[...]}, {highlights:[...]}, ...]
 // y varía según el tipo de negocio → generamos una columna por cada grupo.
@@ -94,10 +126,8 @@ export function exportFilename(ext: "csv" | "json"): string {
 
 export function buildCSV(data: Business[]): Buffer {
   const prepared = prepareDataForExport(data);
-  const worksheet = XLSX.utils.json_to_sheet(prepared);
-  const csv = XLSX.utils.sheet_to_csv(worksheet);
   // BOM UTF-8 para que Excel abra acentos correctamente
-  return Buffer.from("﻿" + csv, "utf-8");
+  return Buffer.from("\uFEFF" + toCSV(prepared), "utf-8");
 }
 
 export function buildJSON(data: Business[]): Buffer {

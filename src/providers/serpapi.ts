@@ -2,7 +2,7 @@ import { getJson } from "serpapi";
 import { config } from "../config";
 import type { PageToken, SearchParams } from "../types";
 import type { MapsProvider, ProviderPage } from "./types";
-import { enrichLocality, enrichWithMapbox, extractCidFromDataId, normalizeBusiness, withTimeout } from "./shared";
+import { enrichLocality, extractCidFromDataId, normalizeBusiness, normalizeDetails, withTimeout } from "./shared";
 
 // ── Puerto fiel de Prospect Hub ─────────────────────────────
 // server.ts:1420-1430 (getGoogleDomain)
@@ -135,9 +135,9 @@ async function search(params: SearchParams, token: PageToken): Promise<ProviderP
     await enrichMissingDetails(kept, gl, hl);
   }
 
-  const enriched = await Promise.all(kept.map((b) => enrichWithMapbox(b)));
+  const enriched = kept.map((b) => normalizeDetails(b));
   const results = enriched.map((b) => normalizeBusiness(b, gl, hl));
-  // SerpAPI no trae código postal ni a veces la localidad → Mapbox lo completa
+  // SerpAPI no trae calle/localidad/provincia/CP/país → UNA llamada a Mapbox por negocio
   await enrichLocality(results, hl);
 
   return {

@@ -39,7 +39,10 @@ cp .env.example .env   # y rellena tus claves
 npm run dev      # desarrollo (reinicio automático)
 npm start        # producción
 npm run smoke    # prueba del motor sin Telegram (gratis, ver nota)
-npm run lint     # typecheck
+npm test         # tests unitarios (gratis, sin red: filtros, CSV, slugs, enlaces…)
+npm run lint     # ESLint
+npm run typecheck # comprobación de tipos (tsc --noEmit)
+npm run check    # lint + typecheck + tests (lo que corre la CI)
 ```
 
 - **Smoke sin gastar nada** (fuerza mock y apaga la IA):

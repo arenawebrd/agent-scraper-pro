@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import * as XLSX from "xlsx";
+import { toCSV } from "./export";
 import type { Business } from "./types";
 
 // Mapeador Business → listings-data.csv de la plantilla business-directory-astro.
@@ -106,7 +106,7 @@ function idSuffix(b: Business, index: number): string {
 //    así no depende del orden en que lleguen los resultados
 //  - un título sin letras latinas (slug vacío) → "negocio-<hash>"
 export function toDirectoryRows(results: Business[], gl?: string): Record<string, string | number>[] {
-  const bases = results.map((b, i) => slugify(b.title || ""));
+  const bases = results.map((b) => slugify(b.title || ""));
   const counts = new Map<string, number>();
   for (const base of bases) if (base) counts.set(base, (counts.get(base) || 0) + 1);
 
@@ -184,6 +184,5 @@ export function toDirectoryRows(results: Business[], gl?: string): Record<string
 // primera columna ("id") como nombre y un BOM la rompería en silencio.
 export function buildDirectoryCSV(results: Business[], gl?: string): Buffer {
   const rows = toDirectoryRows(results, gl);
-  const sheet = XLSX.utils.json_to_sheet(rows, { header: DIRECTORY_COLUMNS });
-  return Buffer.from(XLSX.utils.sheet_to_csv(sheet), "utf-8");
+  return Buffer.from(toCSV(rows, DIRECTORY_COLUMNS), "utf-8");
 }

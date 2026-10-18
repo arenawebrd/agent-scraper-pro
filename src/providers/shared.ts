@@ -92,8 +92,10 @@ export function transformHours(serpHours: any): Record<string, any> | undefined 
   return result;
 }
 
-// server.ts:386-486 (enrichWithMapbox) — sin logs verbosos
-export async function enrichWithMapbox(business: any): Promise<any> {
+// Normaliza horarios e identificadores del negocio SIN red (los proveedores
+// traen los horarios como `hours`/`operating_hours` y el cid aparte).
+// La localización la resuelve enrichLocality() una sola vez por negocio.
+export function normalizeDetails(business: any): any {
   const { open_state, hours, operating_hours, cid, data_cid, ...rest } = business;
 
   const enriched: any = { ...rest };
@@ -113,52 +115,7 @@ export async function enrichWithMapbox(business: any): Promise<any> {
     enriched.opening_hours = hoursObj;
   }
 
-  const token = config.mapboxToken;
-  if (!token) return enriched;
-
-  let query = "";
-  const gps = business.gps_coordinates || business.coordinates || business.latLng;
-  if (gps) {
-    const lat = gps.latitude ?? gps.lat;
-    const lng = gps.longitude ?? gps.lng;
-    if (lat && lng) query = `${lng},${lat}`;
-  }
-  if (!query && business.address) query = encodeURIComponent(business.address);
-  if (!query) return enriched;
-
-  try {
-    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${query}.json?access_token=${token}&limit=1&types=address`;
-    const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!response.ok) return enriched;
-
-    const data: any = await response.json();
-    const feature = data.features?.[0];
-    if (!feature) return enriched;
-
-    const context = feature.context || [];
-    const street = feature.text || "";
-    const addressNumber = feature.address || "";
-    const fullStreet = addressNumber ? `${street} ${addressNumber}`.trim() : street;
-
-    const getContextText = (patterns: string[]) => {
-      for (const pattern of patterns) {
-        const found = context.find((c: any) => c.id.includes(pattern));
-        if (found) return found.text;
-      }
-      return "";
-    };
-
-    return {
-      ...enriched,
-      street: fullStreet,
-      postal_code: getContextText(["postcode", "zip"]),
-      locality: getContextText(["place", "locality", "city"]),
-      province: getContextText(["region", "province", "state"]),
-      country: getContextText(["country"]),
-    };
-  } catch {
-    return enriched;
-  }
+  return enriched;
 }
 
 // Título legible: "dental global" / "DENTAL GLOBAL" → "Dental Global".
@@ -183,9 +140,18 @@ function samePlace(a?: string, b?: string): boolean {
 }
 
 function needsLocality(b: any): boolean {
-  return !b.locality || !b.province || samePlace(b.locality, b.province) || !b.postal_code;
+  return (
+    !b.street ||
+    !b.locality ||
+    !b.province ||
+    !b.country ||
+    samePlace(b.locality, b.province) ||
+    !b.postal_code
+  );
 }
 
+// UNA sola llamada a Mapbox por negocio: reverse geocoding por coordenadas.
+// Rellena calle, localidad, provincia, cód. postal y país, solo lo que falte.
 async function reverseLocality(b: any, token: string, language?: string): Promise<void> {
   const gps = b.gps_coordinates || b.coordinates || b.latLng;
   const lat = gps?.latitude ?? gps?.lat;
@@ -202,19 +168,27 @@ async function reverseLocality(b: any, token: string, language?: string): Promis
     if (!res.ok) return;
     const data: any = await res.json();
     const features: any[] = Array.isArray(data.features) ? data.features : [];
-    const text = (prefix: string) =>
-      features.find((f: any) => typeof f.id === "string" && f.id.startsWith(prefix))?.text || "";
+    const find = (prefix: string) =>
+      features.find((f: any) => typeof f.id === "string" && f.id.startsWith(prefix));
 
-    const region = text("region.");
-    const place = text("place.") || text("locality.") || text("neighborhood.");
-    const postcode = text("postcode.");
+    const address = find("address.");
+    const region = find("region.");
+    const place = find("place.") || find("locality.") || find("neighborhood.");
+    const postcode = find("postcode.");
+    const country = find("country.");
 
-    if (!b.province && region) b.province = region;
-    if ((!b.locality || samePlace(b.locality, b.province)) && place && !samePlace(place, b.province)) {
-      b.locality = place;
+    if (!b.street && address) {
+      const street = address.text || "";
+      const number = address.address || "";
+      b.street = number ? `${street} ${number}`.trim() : street;
+    }
+    if (!b.province && region) b.province = region.text;
+    if ((!b.locality || samePlace(b.locality, b.province)) && place && !samePlace(place.text, b.province)) {
+      b.locality = place.text;
     }
     // Mapbox no tiene código postal en todos los países (RD no) → solo se rellena si aparece
-    if (!b.postal_code && postcode) b.postal_code = postcode;
+    if (!b.postal_code && postcode) b.postal_code = postcode.text;
+    if (!b.country && country) b.country = country.text;
     // Último recurso: el barrio que ya trae AnyAPI
     if (
       (!b.locality || samePlace(b.locality, b.province)) &&
@@ -228,8 +202,9 @@ async function reverseLocality(b: any, token: string, language?: string): Promis
   }
 }
 
-// Completa localidad/provincia/código postal de la página. Devuelve cuántos toques hizo.
-// Corre en ambos proveedores (AnyAPI y SerpAPI): lo que la fuente no trae, Mapbox lo completa.
+// Completa calle/localidad/provincia/código postal/país de la página con UNA
+// llamada a Mapbox por negocio. Devuelve cuántos toques hizo.
+// Corre en todos los proveedores (AnyAPI, SerpAPI y MOCK): lo que la fuente no trae, Mapbox lo completa.
 export async function enrichLocality(results: Business[], language?: string): Promise<number> {
   if (results.length === 0) return 0;
 
@@ -258,7 +233,7 @@ export async function enrichLocality(results: Business[], language?: string): Pr
     }
   };
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, targets.length) }, () => worker()));
-  console.log(`[mapbox] localidad/código postal completados en ${targets.length}/${results.length} negocios`);
+  console.log(`[mapbox] dirección/localidad/código postal consultados para ${targets.length}/${results.length} negocios`);
   return filled + targets.length;
 }
 

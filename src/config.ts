@@ -63,7 +63,7 @@ function boolEnv(name: string, fallback: boolean): boolean {
 }
 
 // MAPS_PROVIDER: qué fuente de datos de Google Maps usa el bot
-const PROVIDER_IDS: ProviderId[] = ["auto", "serpapi", "anyapi", "mock"];
+export const PROVIDER_IDS: readonly ProviderId[] = ["auto", "serpapi", "anyapi", "mock"];
 
 function providerEnv(): ProviderId {
   const raw = (process.env.MAPS_PROVIDER || "").trim().toLowerCase();

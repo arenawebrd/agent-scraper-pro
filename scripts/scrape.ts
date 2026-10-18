@@ -1,11 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
-import { config } from "../src/config";
+import { config, PROVIDER_IDS } from "../src/config";
 import { searchAll } from "../src/scraper";
 import { buildCSV, buildJSON, exportFilename } from "../src/export";
 import { buildDirectoryCSV } from "../src/directory";
 import { applyFilters } from "../src/filters";
-import type { Filters, ProviderId, SearchParams } from "../src/types";
+import { EMPTY_FILTERS, type Filters, type ProviderId, type SearchParams } from "../src/types";
 
 // CLI sin Telegram: misma fachada que el bot (searchAll) exportando a disco.
 // No necesita TELEGRAM_BOT_TOKEN ni la IA: solo las claves del proveedor de mapas.
@@ -49,16 +49,6 @@ interface CliArgs {
   filters: Filters;
   help: boolean;
 }
-
-const EMPTY_FILTERS: Filters = {
-  sinWeb: false,
-  sinTelefono: false,
-  ratingBajo: false,
-  pocasReviews: false,
-  sinFotos: false,
-};
-
-const PROVIDER_IDS: ProviderId[] = ["auto", "anyapi", "serpapi", "mock"];
 
 function parseArgs(argv: string[]): CliArgs {
   const filters = { ...EMPTY_FILTERS };

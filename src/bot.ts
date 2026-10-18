@@ -1,139 +1,17 @@
-import { Bot, InlineKeyboard, InputFile, type Context } from "grammy";
+import { Bot, InputFile, type Context } from "grammy";
 import { aiAvailable, classifyMessage } from "./agent";
-import { config, isChatAllowed } from "./config";
+import { config, isChatAllowed, PROVIDER_IDS } from "./config";
 import { activeFilterLabels, applyFilters } from "./filters";
 import { buildCSV, buildJSON, exportFilename } from "./export";
 import { buildDirectoryCSV } from "./directory";
 import { interpretMapsLink } from "./gmaps";
+import { esc, FILTER_KEYS, filtersKeyboard, mainKeyboard, renderPreview } from "./render";
 import { autoOrder, providerStatus, resultKey, searchAll, searchPage } from "./scraper";
 import { clearSession, createSession, getHistory, getPrefs, getSession, pushHistory, updatePrefs } from "./session";
-import { EMPTY_FILTERS, type Business, type Filters, type ProviderId, type SearchParams, type SearchSession } from "./types";
+import { HELP_TEXT } from "./texts";
+import type { Filters, ProviderId, SearchParams } from "./types";
 
 const HTML = { parse_mode: "HTML" as const } as const;
-
-function esc(value: unknown): string {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-function shortUrl(url: string): string {
-  return url.replace(/^https?:\/\//, "").replace(/\/$/, "");
-}
-
-const HELP_TEXT = `🤖 <b>Agent Scraper Pro</b> — busca prospectos en Google Maps y exporta CSV/JSON
-
-<b>Modo rápido</b>
-<code>/buscar dentistas en Santo Domingo</code>
-<code>/directorio restaurantes en Las Terrenas</code> — igual, pero en formato listings-data.csv
-
-<b>Modo agente (IA)</b> — escribe como si hablaras:
-<code>busca cafeterías sin web en Madrid con menos de 20 reseñas</code>
-<code>trae los listings de dentistas en Santiago para el directorio</code>
-también conversa: «¿qué puedes hacer?», «hola», «¿cómo exporto?»
-
-<b>Enlace de Google Maps</b> — pega cualquier link y lo interpreto:
-<code>google.com/maps/search/restaurantes+en+barcelona/@41.38,2.16,16z</code>
-
-<b>Ajustes</b>
-<code>/pais do</code> — país de búsqueda (código ISO)
-<code>/idioma es</code> — idioma de resultados
-<code>/max 40</code> — máximo de resultados por búsqueda
-<code>/max todo</code> — sin límite, trae todos los disponibles
-<code>/proveedor anyapi</code> — fuente de datos (auto / anyapi / serpapi / mock)
-<code>/ajustes</code> — ver configuración
-
-<b>Después de cada búsqueda</b>
-📄 CSV / 🧾 JSON — exportar archivo
-📁 Directorio — CSV con las columnas de la plantilla de directorios (listings-data.csv)
-➕ Cargar más — siguiente página de resultados
-🔍 Filtros — sin web, sin teléfono, rating bajo, pocas reseñas, sin fotos`;
-
-// ── Render ──────────────────────────────────────────────────
-export function renderPreview(session: SearchSession): string {
-  const { params, results, filters, hasMore, pages, provider, costUsd } = session;
-  const filtered = applyFilters(results, filters);
-  const active = activeFilterLabels(filters);
-
-  const head: string[] = [];
-  head.push(`🔍 <b>${esc(params.query)}</b>`);
-
-  let meta = `📊 <b>${filtered.length}</b> resultados`;
-  if (filtered.length !== results.length) meta += ` de ${results.length} extraídos`;
-  meta += ` · ${params.gl.toUpperCase()} · ${params.hl}`;
-  if (provider) meta += ` · 🛰 ${provider}`;
-  if (costUsd > 0) meta += ` · 💲$${costUsd.toFixed(4)}`;
-  if (active.length) meta += `\n🎯 Filtros: <b>${esc(active.join(", "))}</b>`;
-  head.push(meta);
-
-  let paging = `📄 ${pages} página${pages === 1 ? "" : "s"} cargada${pages === 1 ? "" : "s"}`;
-  const unlimited = params.max <= 0;
-  if (!unlimited && hasMore) paging += ` · límite ${params.max} (sube con <code>/max 100</code>)`;
-  else if (!unlimited && results.length >= params.max) paging += ` · ⚠️ límite de ${params.max} alcanzado`;
-  else if (unlimited && hasMore) paging += ` · quedan páginas (➕ Cargar más)`;
-  head.push(paging);
-
-  if (results.length === 0) {
-    return `${head.join("\n")}\n\nSin resultados. Prueba con otra ubicación o cambia el país con <code>/pais xx</code>.`;
-  }
-  if (filtered.length === 0) {
-    return `${head.join("\n")}\n\nNingún resultado cumple los filtros. Desactíalos en 🔍 Filtros.`;
-  }
-
-  const blocks: string[] = [];
-  const shown = filtered.slice(0, config.previewCount);
-  for (let i = 0; i < shown.length; i++) {
-    const b = shown[i];
-    const rating = b.rating ? `⭐ ${b.rating}` : "⭐ sin rating";
-    const reviews = b.reviews ? ` · ${b.reviews} reseñas` : "";
-    const contact: string[] = [];
-    if (b.phone) contact.push(`📞 <code>${esc(b.phone)}</code>`);
-    contact.push(b.website ? `🌐 <code>${esc(shortUrl(String(b.website)))}</code>` : "🌐 <i>sin web</i>");
-
-    let block = `<b>${i + 1}. ${esc(b.title)}</b>\n${rating}${reviews}\n${contact.join("  ·  ")}`;
-    if (b.address) block += `\n📍 ${esc(b.address)}`;
-
-    const current = blocks.join("\n\n");
-    if (current.length + block.length > 3300) break;
-    blocks.push(block);
-  }
-
-  const remaining = filtered.length - shown.length;
-  const footer =
-    remaining > 0
-      ? `\n\n<i>… y ${remaining} más. Usa ➕ Cargar más o exporta 📄 CSV / 🧾 JSON (incluye todos).</i>`
-      : "";
-  return `${head.join("\n")}\n\n${blocks.join("\n\n")}${footer}`;
-}
-
-function mainKeyboard(session: SearchSession): InlineKeyboard {
-  return new InlineKeyboard()
-    .text("📄 CSV", "csv")
-    .text("🧾 JSON", "json")
-    .text("📁 Directorio", "dir")
-    .row()
-    .text("➕ Cargar más", "more")
-    .text("🔍 Filtros", "filters")
-    .row()
-    .text("🔄 Nueva búsqueda", "reset");
-}
-
-function filtersKeyboard(f: Filters): InlineKeyboard {
-  const mark = (on: boolean) => (on ? "✅ " : "⬜ ");
-  return new InlineKeyboard()
-    .text(`${mark(f.sinWeb)}Sin web`, "f:sinWeb")
-    .text(`${mark(f.sinTelefono)}Sin teléfono`, "f:sinTelefono")
-    .row()
-    .text(`${mark(f.ratingBajo)}Rating bajo`, "f:ratingBajo")
-    .text(`${mark(f.pocasReviews)}Pocas reseñas`, "f:pocasReviews")
-    .row()
-    .text(`${mark(f.sinFotos)}Sin fotos`, "f:sinFotos")
-    .text("⬅️ Volver", "back")
-    .row();
-}
-
-const FILTER_KEYS: (keyof Filters)[] = ["sinWeb", "sinTelefono", "ratingBajo", "pocasReviews", "sinFotos"];
 
 // ── Búsqueda ────────────────────────────────────────────────
 async function runSearch(
@@ -354,9 +232,6 @@ export function createBot(): Bot {
     await next();
   });
 
-  const startSearch = (params: SearchParams, filters: Partial<Filters> = {}) => (ctx: Context) =>
-    runSearch(ctx, params, filters);
-
   bot.command("start", (ctx) => ctx.reply(HELP_TEXT, HTML));
   bot.command("ayuda", (ctx) => ctx.reply(HELP_TEXT, HTML));
 
@@ -437,8 +312,7 @@ export function createBot(): Bot {
       return;
     }
 
-    const options: ProviderId[] = ["auto", "anyapi", "serpapi", "mock"];
-    if (!options.includes(raw as ProviderId)) {
+    if (!PROVIDER_IDS.includes(raw as ProviderId)) {
       await ctx.reply(
         "Opción no válida. Usa <code>/proveedor auto</code> · <code>/proveedor anyapi</code> · <code>/proveedor serpapi</code> · <code>/proveedor mock</code>",
         HTML
