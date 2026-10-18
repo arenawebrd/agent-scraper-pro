@@ -1,5 +1,5 @@
 import { config } from "./config";
-import { countryLabel, geocodeArea, gridCells } from "./geo";
+import { countryLabel, geocodeArea, gridCells, pointInArea } from "./geo";
 import { resultKey, searchAll, type ResolvedPage } from "./scraper";
 import type { Business, ProviderId, SearchParams } from "./types";
 
@@ -100,9 +100,33 @@ export async function searchArea(
     await opts.onCell?.(i + 1, cells.length, collected.length);
   }
 
+  // La rejilla es rectangular: descartamos lo que caiga fuera del polígono real
+  // de la provincia/región. Los negocios sin coordenadas no se pueden comprobar.
+  let results = collected;
+  let outside = 0;
+  let unchecked = 0;
+  if (geo.geometry) {
+    results = collected.filter((b) => {
+      const lat = b.gps_coordinates?.latitude;
+      const lng = b.gps_coordinates?.longitude;
+      if (typeof lat !== "number" || typeof lng !== "number") {
+        unchecked++;
+        return true;
+      }
+      const inside = pointInArea(lat, lng, geo.geometry);
+      if (!inside) outside++;
+      return inside;
+    });
+    console.log(
+      `[sweep] ${results.length}/${collected.length} dentro del área` +
+        `${outside ? ` · ${outside} fuera descartados` : ""}` +
+        `${unchecked ? ` · ${unchecked} sin coordenadas (sin comprobar)` : ""}`
+    );
+  }
+
   const fixed: Exclude<ProviderId, "auto"> = provider && provider !== "auto" ? provider : "mock";
   return {
-    results: collected,
+    results,
     hasMore: false,
     nextToken: undefined,
     provider: fixed,

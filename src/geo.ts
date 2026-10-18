@@ -12,15 +12,22 @@ async function throttle(): Promise<void> {
   lastGeo = Date.now();
 }
 
+// Geometría GeoJSON de un área (Polygon/MultiPolygon; coordenadas [lng, lat])
+export type AreaGeometry =
+  | { type: "Polygon"; coordinates: number[][][] }
+  | { type: "MultiPolygon"; coordinates: number[][][][] };
+
 export interface GeoArea {
   lat: number;
   lng: number;
   label: string;
   // [sur, norte, oeste, este] — de Nominatim
   bbox?: [number, number, number, number];
+  // Polígono real del área, para filtrar los resultados que caen fuera
+  geometry?: AreaGeometry;
 }
 
-// Busca un lugar por nombre y devuelve su centro y su caja envolvente.
+// Busca un lugar por nombre y devuelve su centro, su caja envolvente y su polígono.
 // Sirve igual para una provincia ("Samaná"), una región ("Pichincha") o un estado.
 export async function geocodeArea(query: string): Promise<GeoArea | null> {
   const q = query.trim();
@@ -29,7 +36,7 @@ export async function geocodeArea(query: string): Promise<GeoArea | null> {
   await throttle();
   try {
     const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`,
+      `https://nominatim.openstreetmap.org/search?format=json&limit=1&polygon_geojson=1&q=${encodeURIComponent(q)}`,
       { headers: { "User-Agent": USER_AGENT }, signal: AbortSignal.timeout(8000) }
     );
     if (!res.ok) return null;
@@ -48,10 +55,46 @@ export async function geocodeArea(query: string): Promise<GeoArea | null> {
         bbox = [south, north, west, east];
       }
     }
-    return { lat, lng, label: String(hit.display_name || q), bbox };
+
+    let geometry: AreaGeometry | undefined;
+    if (hit.geojson?.type === "Polygon" || hit.geojson?.type === "MultiPolygon") {
+      geometry = hit.geojson as AreaGeometry;
+    }
+
+    return { lat, lng, label: String(hit.display_name || q), bbox, geometry };
   } catch {
     return null;
   }
+}
+
+// Punto-en-polígono (ray casting). `ring` usa coordenadas [lng, lat].
+function inRing(lng: number, lat: number, ring: number[][]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0];
+    const yi = ring[i][1];
+    const xj = ring[j][0];
+    const yj = ring[j][1];
+    const crosses = yi > lat !== yj > lat && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi;
+    if (crosses) inside = !inside;
+  }
+  return inside;
+}
+
+// Un polígono puede tener huecos (anillos 1..n): dentro del exterior y fuera de los huecos.
+function inPolygon(lng: number, lat: number, rings: number[][][]): boolean {
+  if (!rings.length || !inRing(lng, lat, rings[0])) return false;
+  for (let k = 1; k < rings.length; k++) {
+    if (inRing(lng, lat, rings[k])) return false;
+  }
+  return true;
+}
+
+// ¿El punto (lat, lng) cae dentro del área? Sin geometría no se puede comprobar → true.
+export function pointInArea(lat: number, lng: number, geometry?: AreaGeometry): boolean {
+  if (!geometry) return true;
+  if (geometry.type === "Polygon") return inPolygon(lng, lat, geometry.coordinates);
+  return geometry.coordinates.some((poly) => inPolygon(lng, lat, poly));
 }
 
 export interface Grid {

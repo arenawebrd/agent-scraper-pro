@@ -104,6 +104,9 @@ rejilla**:
 2. **Trocea** la caja en celdas con solape (separación ≈ radio × 1.3) y busca en cada una
    (mismo `ll` para AnyAPI y SerpAPI → misma cobertura en ambos).
 3. **Une y deduplica** por `place_id`/`cid`, así que un negocio visto en dos celdas cuenta una vez.
+4. **Filtra por el polígono real** del área (no por la caja): descarta lo que caiga fuera de
+   la provincia/región, así no se cuelan resultados de provincias vecinas. Los negocios sin
+   coordenadas no se pueden comprobar y se conservan (se avisa en el log cuántos son).
 
 Coste y control: **cada celda es una búsqueda** (AnyAPI ≈ $0.0013 · SerpAPI = 1 crédito),
 por eso `MAPS_MAX_CELLS` (default `30`) es un tope duro y `MAPS_MAX_PER_CELL` (default `20`)
@@ -112,7 +115,8 @@ estimación supera el tope verás `⚠️ tope alcanzado (sube MAPS_MAX_CELLS)`.
 
 Salvedad: Google Maps nunca garantiza el 100% de las fichas; la rejilla **maximiza** la
 cobertura, no la vuelve infinita. Si el nombre es ambiguo (una ciudad y una provincia con el
-mismo nombre), añade el país al pedirlo o sube `MAPS_MAX_CELLS`.
+mismo nombre), añade el país al pedirlo o sube `MAPS_MAX_CELLS`. Los resultados de fuera del
+polígono de la provincia se descartan (el log muestra `N/M dentro del área · X fuera`).
 
 ### Después de cada búsqueda
 
