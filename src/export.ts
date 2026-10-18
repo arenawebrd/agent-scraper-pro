@@ -1,3 +1,4 @@
+import { nativeUrls } from "./providers/shared";
 import type { Business } from "./types";
 
 // ── CSV propio (sin dependencias) ───────────────────────────
@@ -62,7 +63,7 @@ function extensionValue(item: any, key: string): string {
 
 // Port exacto de Prospect Hub src/utils/export.ts:5-32 (mismas columnas)
 // + extensiones/amenities/service_options del negocio (típico por rubro)
-export function prepareDataForExport(data: any[]): any[] {
+export function prepareDataForExport(data: any[], gl?: string, hl?: string): any[] {
   const extKeys = collectExtensionKeys(data);
   return data.map((item, index) => {
     const processed: any = {};
@@ -90,8 +91,9 @@ export function prepareDataForExport(data: any[]): any[] {
     processed.extracted_price = item.extracted_price ?? "";
     processed.data_id = typeof item.data_id === "object" ? JSON.stringify(item.data_id) : item.data_id || "";
     processed.place_id = typeof item.place_id === "object" ? JSON.stringify(item.place_id) : item.place_id || "";
-    processed.map_url = typeof item.map_url === "object" ? JSON.stringify(item.map_url) : item.map_url || "";
-    processed.review_url = typeof item.review_url === "object" ? JSON.stringify(item.review_url) : item.review_url || "";
+    const urls = nativeUrls(item, gl, hl);
+    processed.map_url = typeof urls.map_url === "object" ? JSON.stringify(urls.map_url) : urls.map_url || "";
+    processed.review_url = typeof urls.review_url === "object" ? JSON.stringify(urls.review_url) : urls.review_url || "";
     processed.thumbnail = typeof item.thumbnail === "object" ? JSON.stringify(item.thumbnail) : item.thumbnail || "";
     processed.opening_hours = item.opening_hours ? JSON.stringify(item.opening_hours) : "";
     processed.open_state = item.open_state || "";
@@ -124,13 +126,13 @@ export function exportFilename(ext: "csv" | "json"): string {
   return `leads_${timestamp()}.${ext}`;
 }
 
-export function buildCSV(data: Business[]): Buffer {
-  const prepared = prepareDataForExport(data);
+export function buildCSV(data: Business[], gl?: string, hl?: string): Buffer {
+  const prepared = prepareDataForExport(data, gl, hl);
   // BOM UTF-8 para que Excel abra acentos correctamente
   return Buffer.from("\uFEFF" + toCSV(prepared), "utf-8");
 }
 
-export function buildJSON(data: Business[]): Buffer {
-  const prepared = prepareDataForExport(data);
+export function buildJSON(data: Business[], gl?: string, hl?: string): Buffer {
+  const prepared = prepareDataForExport(data, gl, hl);
   return Buffer.from(JSON.stringify(prepared, null, 2), "utf-8");
 }

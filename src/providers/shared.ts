@@ -237,6 +237,36 @@ export async function enrichLocality(results: Business[], language?: string): Pr
   return filled + targets.length;
 }
 
+// ── URLs nativas de Google Maps ──────────────────────────────
+// Se construyen aquí a partir del cid/place_id, sin depender del proveedor,
+// para que el CSV de exportación nunca salga sin map_url/review_url.
+export function nativeMapUrl(
+  b: { cid?: string; data_cid?: string; place_id?: string; title?: string },
+  gl?: string,
+  hl?: string
+): string {
+  const cid = b.cid || b.data_cid;
+  const glc = (gl || config.defaultGl).toUpperCase();
+  const hlc = hl || config.defaultHl;
+  if (cid) return `https://www.google.com/maps?cid=${cid}&hl=${hlc}&gl=${glc}`;
+  if (b.place_id) {
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(b.title || "")}&query_place_id=${b.place_id}`;
+  }
+  return "";
+}
+
+export function nativeReviewUrl(b: { place_id?: string }): string {
+  return b.place_id ? `https://search.google.com/local/writereview?placeid=${b.place_id}` : "";
+}
+
+// Completa map_url/review_url solo si faltan (no pisa lo que ya traiga el proveedor).
+export function nativeUrls(b: Business, gl?: string, hl?: string): { map_url: string; review_url: string } {
+  return {
+    map_url: b.map_url || nativeMapUrl(b, gl, hl),
+    review_url: b.review_url || nativeReviewUrl(b),
+  };
+}
+
 // src/services/api.ts:48-90 (normalización de cada resultado)
 export function normalizeBusiness(raw: any, gl: string, hl: string): Business {
   const {
@@ -255,16 +285,12 @@ export function normalizeBusiness(raw: any, gl: string, hl: string): Business {
   }
 
   const cid = rest.cid || extractCidFromDataId(rest.data_id);
-  if (cid) {
-    rest.cid = cid;
-    rest.map_url = `https://www.google.com/maps?cid=${cid}&hl=${hl}&gl=${gl.toUpperCase()}`;
-  } else if (rest.place_id) {
-    rest.map_url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(rest.title || "")}&query_place_id=${rest.place_id}`;
-  }
+  if (cid) rest.cid = cid;
 
-  if (rest.place_id) {
-    rest.review_url = `https://search.google.com/local/writereview?placeid=${rest.place_id}`;
-  }
+  const mapUrl = nativeMapUrl(rest, gl, hl);
+  if (mapUrl) rest.map_url = mapUrl;
+  const reviewUrl = nativeReviewUrl(rest);
+  if (reviewUrl) rest.review_url = reviewUrl;
 
   if (photos && Array.isArray(photos) && photos.length > 0) {
     rest.photos = photos.map((p: any) => p.photo_url_large || p.photo_url || p.url);

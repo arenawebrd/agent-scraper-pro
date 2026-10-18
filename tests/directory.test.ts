@@ -33,6 +33,12 @@ test("toDirectoryRows mapea horarios en español e inglés", () => {
   assert.equal(row.sunday, "");
 });
 
+test("toDirectoryRows genera map_url/review_url nativas si faltan", () => {
+  const [row] = toDirectoryRows([{ title: "X", cid: "999", place_id: "ChIJzzz" }] as any, "do", "es");
+  assert.equal(row.map_url, "https://www.google.com/maps?cid=999&hl=es&gl=DO");
+  assert.equal(row.review_url, "https://search.google.com/local/writereview?placeid=ChIJzzz");
+});
+
 test("buildDirectoryCSV: cabecera exacta y sin BOM", () => {
   const text = buildDirectoryCSV([{ title: "X", place_id: "p1" } as any]).toString("utf-8");
   assert.notEqual(text.charCodeAt(0), 0xfeff);

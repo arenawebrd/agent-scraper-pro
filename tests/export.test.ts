@@ -27,6 +27,23 @@ test("buildJSON produce JSON parseable", () => {
   assert.equal(arr[0].rating, 4.5);
 });
 
+test("prepareDataForExport genera map_url/review_url nativas si faltan", () => {
+  const prepared = prepareDataForExport(
+    [
+      { title: "A", cid: "123", place_id: "ChIJabc" },
+      { title: "B", place_id: "ChIJdef" },
+      { title: "C", map_url: "https://mio", review_url: "https://rev" },
+    ] as Business[],
+    "do",
+    "es"
+  );
+  assert.equal(prepared[0].map_url, "https://www.google.com/maps?cid=123&hl=es&gl=DO");
+  assert.equal(prepared[0].review_url, "https://search.google.com/local/writereview?placeid=ChIJabc");
+  assert.match(prepared[1].map_url, /query_place_id=ChIJdef/);
+  assert.equal(prepared[2].map_url, "https://mio");
+  assert.equal(prepared[2].review_url, "https://rev");
+});
+
 test("prepareDataForExport genera columnas dinámicas ext_* ordenadas", () => {
   const prepared = prepareDataForExport([
     { title: "A", extensions: [{ highlights: ["x", "y"] }] },

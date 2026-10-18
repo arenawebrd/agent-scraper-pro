@@ -208,7 +208,9 @@ async function sendExport(ctx: Context, ext: "csv" | "json" | "directory"): Prom
 
   const label = ext === "directory" ? "DIRECTORIO" : ext.toUpperCase();
   await ctx.answerCallbackQuery({ text: `Generando ${label}…` });
-  const buffer = ext === "directory" ? buildDirectoryCSV(data, session.params.gl) : ext === "csv" ? buildCSV(data) : buildJSON(data);
+  const { gl, hl } = session.params;
+  const buffer =
+    ext === "directory" ? buildDirectoryCSV(data, gl, hl) : ext === "csv" ? buildCSV(data, gl, hl) : buildJSON(data, gl, hl);
   const filename = ext === "directory" ? "listings-data.csv" : exportFilename(ext === "json" ? "json" : "csv");
   const active = activeFilterLabels(session.filters);
   const caption =

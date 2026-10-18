@@ -186,9 +186,9 @@ async function main() {
 
   const out = args.out ?? exportFilename(args.format === "directory" ? "csv" : args.format);
   const body =
-    args.format === "directory" ? buildDirectoryCSV(results, params.gl)
-    : args.format === "json" ? buildJSON(results)
-    : buildCSV(results);
+    args.format === "directory" ? buildDirectoryCSV(results, params.gl, params.hl)
+    : args.format === "json" ? buildJSON(results, params.gl, params.hl)
+    : buildCSV(results, params.gl, params.hl);
   fs.mkdirSync(path.dirname(path.resolve(out)), { recursive: true });
   fs.writeFileSync(out, body);
   console.log(`[scrape] ✓ ${args.format.toUpperCase()} → ${path.resolve(out)}`);

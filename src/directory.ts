@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { toCSV } from "./export";
+import { nativeUrls } from "./providers/shared";
 import type { Business } from "./types";
 
 // Mapeador Business → listings-data.csv de la plantilla business-directory-astro.
@@ -105,7 +106,7 @@ function idSuffix(b: Business, index: number): string {
 //  - un título repetido → TODOS los repetidos llevan sufijo derivado de su place_id/cid,
 //    así no depende del orden en que lleguen los resultados
 //  - un título sin letras latinas (slug vacío) → "negocio-<hash>"
-export function toDirectoryRows(results: Business[], gl?: string): Record<string, string | number>[] {
+export function toDirectoryRows(results: Business[], gl?: string, hl?: string): Record<string, string | number>[] {
   const bases = results.map((b) => slugify(b.title || ""));
   const counts = new Map<string, number>();
   for (const base of bases) if (base) counts.set(base, (counts.get(base) || 0) + 1);
@@ -126,6 +127,7 @@ export function toDirectoryRows(results: Business[], gl?: string): Record<string
     const lng = b.gps_coordinates?.longitude ?? "";
     const types = Array.isArray(b.types) ? b.types.filter(Boolean).map(String) : [];
     const firstType = types[0] || (b.type ? String(b.type) : "");
+    const urls = nativeUrls(b, gl, hl);
 
     const row: Record<string, string | number> = {};
     // id estable entre refrescos: place_id > cid decimal > data_id (nunca el índice)
@@ -158,8 +160,8 @@ export function toDirectoryRows(results: Business[], gl?: string): Record<string
     row.longitude = lng;
     row.data_id = b.data_id || "";
     row.data_cid = b.data_cid || "";
-    row.map_url = b.map_url || "";
-    row.review_url = b.review_url || "";
+    row.map_url = urls.map_url || "";
+    row.review_url = urls.review_url || "";
     row.operating_hours = b.opening_hours ? JSON.stringify(b.opening_hours) : "";
     for (const day of DAY_COLUMNS) {
       row[day] = dayText(dayValue(b.opening_hours, day));
@@ -182,7 +184,7 @@ export function toDirectoryRows(results: Business[], gl?: string): Record<string
 
 // CSV con las columnas de la plantilla. SIN BOM: process-listings usa la
 // primera columna ("id") como nombre y un BOM la rompería en silencio.
-export function buildDirectoryCSV(results: Business[], gl?: string): Buffer {
-  const rows = toDirectoryRows(results, gl);
+export function buildDirectoryCSV(results: Business[], gl?: string, hl?: string): Buffer {
+  const rows = toDirectoryRows(results, gl, hl);
   return Buffer.from(toCSV(rows, DIRECTORY_COLUMNS), "utf-8");
 }
