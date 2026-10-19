@@ -45,7 +45,7 @@ async function main() {
     if ((error as { error_code?: number })?.error_code === 409) {
       console.error("");
       console.error("[bot] ⚠️  Telegram dice que YA hay otra instancia conectada (409 Conflict).");
-      console.error('     Detén la otra con:  pkill -f "tsx src/index.ts"  y relanza este.');
+      console.error('     Detén la otra con:  pkill -f "src/index.ts"  y relanza este.');
       process.exit(1);
     }
     throw error;

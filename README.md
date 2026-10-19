@@ -27,7 +27,7 @@ cp .env.example .env   # y rellena tus claves
 | `ENRICH_DETAILS` | opcional | `false` (default) · `true` → pide el detalle de cada negocio a SerpAPI: **1 crédito extra por negocio** que le falte web/teléfono (solo SerpAPI) |
 | `ALLOWED_CHAT_IDS` | **obligatoria** | IDs de Telegram autorizados, separados por coma. Vacío = el bot **rechaza a todos** (cerrado por defecto). Escríbele al bot y te responde con tu chat id |
 | `ALLOW_OPEN_BOT` | opcional | `false` (default) · `true` → el bot responde a cualquier chat si `ALLOWED_CHAT_IDS` está vacío (⚠️ gasta tu cuota; solo para pruebas) |
-| `AI_PROVIDER` | opcional | `opencode` · `gemini` · `openai` · `claude` · `openrouter` · `groq` · `none` |
+| `AI_PROVIDER` | opcional | `opencode` (default) · `gemini` · `openai` · `claude` · `openrouter` · `groq` · `none` |
 | `AI_MODEL` | opcional | Fuerza un modelo concreto (si no, usa el default del proveedor) |
 | `*_API_KEY` | según proveedor | `OPENCODE_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `GROQ_API_KEY` |
 | `MAX_RESULTS` | opcional | Resultados por búsqueda: `0` / `todo` (default) = **todos los disponibles** · número = tope (máx 200) |
@@ -52,7 +52,7 @@ npm run check    # lint + typecheck + tests (lo que corre la CI)
   ⚠️ Si tu `.env` tiene `MAPS_PROVIDER=serpapi` (o cualquier otro forzado) hace **falta** `MAPS_PROVIDER=mock`, porque el proveedor elegido no se cambia solo.
 - **Smoke con claves reales**: cuesta ≈ **$0,0013** (AnyAPI trae 5 resultados en una sola página) o **1 crédito** si `MAPS_PROVIDER=serpapi`. Si la IA no tiene cuota libre, añade `AI_PROVIDER=none` o el smoke falla en la última sección.
 
-> ⚠️ **Solo una instancia a la vez.** Telegram solo admite un `getUpdates` por bot: si levantas otra mientras una corre, **la que estaba corriendo antes es la que muere** con `409 Conflict` (la petición nueva corta a la antigua; solo sobrevive la última). Antes de relanzar, mata la anterior con `pkill -f "tsx src/index.ts"`.
+> ⚠️ **Solo una instancia a la vez.** Telegram solo admite un `getUpdates` por bot: si levantas otra mientras una corre, **la que estaba corriendo antes es la que muere** con `409 Conflict` (la petición nueva corta a la antigua; solo sobrevive la última). Antes de relanzar, mata la anterior con `pkill -f "src/index.ts"` (vale también para `npm run dev`).
 
 ### CLI sin Telegram (scrape a disco)
 
@@ -87,11 +87,11 @@ En el bot también está: con `/directorio <búsqueda>`, pidiéndolo en lenguaje
 | `/buscar dentistas en Santo Domingo` | Búsqueda directa sin IA |
 | `/directorio restaurantes en Las Terrenas` | Igual que `/buscar`, pero el 📄 CSV sale en formato `listings-data.csv` de la plantilla de directorios |
 | `/provincia farmacias en Samaná` | **Barrido de toda la provincia/región**: geocodifica el área, la trocea en una rejilla y busca en cada celda (no solo la capital). Ver *Barrido por provincia* |
-| *(texto libre)* | Requiere IA activa (sin IA o si no logra interpretarlo, el bot **no** lanza ninguna búsqueda: usa `/buscar`). El agente IA interpreta: *"cafeterías sin web en Madrid con menos de 20 reseñas"*, *"trae los listings de dentistas en Santiago para el directorio"* (→ CSV del directorio) o *"todas las farmacias de la provincia de Samaná"* (→ barrido de provincia) |
+| *(texto libre)* | Requiere IA activa (sin IA o si no logra interpretarlo, el bot **no** lanza ninguna búsqueda: usa `/buscar`). El agente IA interpreta: *"cafeterías sin web en Madrid con pocas reseñas"*, *"trae los listings de dentistas en Santiago para el directorio"* (→ CSV del directorio) o *"todas las farmacias de la provincia de Samaná"* (→ barrido de provincia) |
 | `/pais do` · `/idioma es` · `/max 40` · `/max todo` | Ajustes por defecto (`/max todo` = sin límite) |
 | `/proveedor anyapi` | Fuente de datos: `auto` · `anyapi` · `serpapi` · `mock` (`/proveedor` sin argumentos la muestra) |
 | `/ajustes` | Ver configuración actual |
-| `/ayuda` | Instrucciones |
+| `/ayuda` (o `/start`) | Instrucciones |
 
 ### Barrido por provincia/región
 
@@ -141,7 +141,7 @@ sudo docker compose down         # parar
 - La imagen compila TypeScript (`npm run build`) y arranca con `node dist/index.js`: dentro del contenedor **no hay `tsx` ni `typescript`**, corre como el usuario `node` (no root) y no escribe nada en disco → **no necesita volúmenes**.
 - Tus claves **no entran en la imagen**: `.env` está en `.dockerignore` y el contenedor las recibe al arranque con `env_file: .env`.
 - `restart: unless-stopped` lo vuelve a levantar si se cae o si reinicias la máquina; los logs se rotan (10 MB × 3) para no llenar el disco. Sin puertos que exponer: solo hace *long-polling* saliente a Telegram.
-- ⚠️ **Una sola instancia**: si el bot de `npm start` sigue corriendo, páralo antes (`pkill -f "tsx src/index.ts"`) o uno de los dos muere con `409 Conflict`.
+- ⚠️ **Una sola instancia**: si el bot de `npm start` sigue corriendo, páralo antes (`pkill -f "src/index.ts"`) o uno de los dos muere con `409 Conflict`.
 - Útiles: `sudo docker compose ps` (estado) · `sudo docker compose logs --tail 50 bot` · `sudo docker compose up -d --build` (reconstruir tras tocar código).
 
 ### Ejecutarlo en otro proyecto (o en otra máquina)
@@ -199,14 +199,41 @@ Telegram → bot.ts → agent.ts (IA: texto → parámetros)
 
 `providers/serpapi.ts` es un port directo de `server.ts:795-919` de Prospect Hub: búsqueda paginada, enriquecimiento de teléfono/web en chunks de 5 con timeout de 15s, `getGoogleDomain()` por país, normalización de horarios y geocodificación inversa con Mapbox. Cualquier fuente nueva solo debe implementar la interfaz `MapsProvider` de `providers/types.ts` (`available()` + `search(params, token)`) y registrarse en `providers/index.ts`.
 
+## Estructura del proyecto
+
+```
+src/
+  index.ts        arranque: valida el token, registra el menú de comandos y lanza el bot
+  bot.ts          comandos, botones, texto libre y envío de archivos
+  texts.ts        HELP_TEXT (lo que ven /start y /ayuda)
+  agent.ts        agente IA: SYSTEM_PROMPT y clasificación texto → parámetros
+  config.ts       lee y valida el .env (proveedores, ajustes y whitelist)
+  types.ts        tipos compartidos (Business, Filters, SearchParams…)
+  scraper.ts      fachada: elige proveedor, hace fallback y deduplica
+  sweep.ts        barrido por provincia/región (rejilla + filtro por polígono)
+  geo.ts          geocodificación Nominatim y rejilla geográfica
+  gmaps.ts        interpreta enlaces de Google Maps
+  filters.ts      filtros (sin web, sin teléfono, rating bajo, pocas reseñas, sin fotos)
+  export.ts       CSV/JSON con las columnas de leads
+  directory.ts    CSV listings-data.csv de la plantilla de directorios
+  render.ts       preview de resultados y teclados de Telegram
+  session.ts      sesión y preferencias por chat
+  providers/      anyapi.ts · serpapi.ts · mock.ts (+ types.ts, shared.ts, index.ts)
+scripts/
+  smoke.ts        prueba del motor sin Telegram
+  scrape.ts       CLI de scraping a disco (sin bot)
+tests/            pruebas unitarias (node:test)
+```
+
 ## Personalización (identidad y prompts)
 
 | Qué cambiar | Dónde | Detalle |
 |---|---|---|
 | Prompt / personalidad de la IA | `src/agent.ts` → `SYSTEM_PROMPT` | Identidad ("Agent Scraper Pro"), capacidades, tono, idioma y el JSON que debe devolver (`type="search"` / `type="chat"`) |
-| Texto de `/start` y `/ayuda` | `src/bot.ts` → `HELP_TEXT` | Mensaje de bienvenida e instrucciones (HTML de Telegram) |
+| Texto de `/start` y `/ayuda` | `src/texts.ts` → `HELP_TEXT` | Mensaje de bienvenida e instrucciones (HTML de Telegram) |
 | Descripciones de comandos (menú) | `src/index.ts` → `setMyCommands` | Nombre y descripción que muestra Telegram bajo el chat |
-| Resto de mensajes del bot | `src/bot.ts` | Preview de resultados, errores, botones y textos de estado (literales en el código) |
+| Preview y botones | `src/render.ts` | Formato del preview de resultados y teclados (CSV/JSON/Directorio, filtros) |
+| Resto de mensajes del bot | `src/bot.ts` | Errores, avisos y textos de estado (literales en el código) |
 | Fuente de datos de mapas | `.env` → `MAPS_PROVIDER` o `/proveedor` | Ver sección *Proveedores de datos*; añadir otra = nuevo archivo en `src/providers/` |
 | Modelo / proveedor de IA | `.env` → `AI_PROVIDER`, `AI_MODEL` | Ver tabla de variables |
 | Nombre visible del bot | [@BotFather](https://t.me/BotFather) | No está en el código |
