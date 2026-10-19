@@ -19,6 +19,16 @@ test("formatTitle respeta nombres ya escritos y siglas cortas", () => {
   assert.equal(formatTitle("OdontoLeon"), "OdontoLeon");
   assert.equal(formatTitle("GO Dental"), "GO Dental");
   assert.equal(formatTitle("UPA"), "UPA");
+  assert.equal(formatTitle("McDonald's"), "McDonald's");
+  assert.equal(formatTitle("BBQ HOUSE"), "BBQ House");
+  assert.equal(formatTitle("SERVICIOS EEUU"), "Servicios EEUU");
+});
+
+test("formatTitle normaliza títulos con mayúsculas mezcladas", () => {
+  assert.equal(formatTitle("supermercado LA SIRENA"), "Supermercado La Sirena");
+  assert.equal(formatTitle("CLINICA DR. PEREZ"), "Clinica Dr. Perez");
+  assert.equal(formatTitle("Farmacia CAROL 24H"), "Farmacia Carol 24H");
+  assert.equal(formatTitle("MARIA & JOSE"), "Maria & Jose");
 });
 
 test("extractCidFromDataId convierte el hex a decimal", () => {

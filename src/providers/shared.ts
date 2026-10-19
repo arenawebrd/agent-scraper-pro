@@ -118,18 +118,47 @@ export function normalizeDetails(business: any): any {
   return enriched;
 }
 
-// Título legible: "dental global" / "DENTAL GLOBAL" → "Dental Global".
-// Respeta los que ya están bien escritos ("OdontoLeon", "GO Dental") y las
-// siglas cortas ("UPA", "EEUU", "GO"): solo se reescribe si TODO va en mayúsculas.
+// Artículos, preposiciones y abreviaturas que NO son siglas aunque vengan cortas
+// y en mayúsculas: se normalizan a "Inicial + minúsculas" (EL → El, DR → Dr).
+const NORMALIZE_WORDS = new Set([
+  "el", "la", "los", "las", "un", "una", "unos", "unas",
+  "de", "del", "al", "y", "e", "o", "u", "a", "en", "con", "sin", "por", "para",
+  "dr", "dra", "sr", "sra", "av", "avda", "san", "santa", "santo", "don", "doña",
+]);
+
+// Siglas cortas (UPA, BBQ, GO) que se conservan tal cual en mayúsculas.
+const ACRONYM_MAX = 3;
+// Siglas conocidas de 4 letras que también se conservan (el resto de palabras
+// de 4 letras en mayúsculas, como PINO o CASA, sí se normalizan).
+const KNOWN_ACRONYMS = new Set(["eeuu", "uefa", "nasa", "fifa", "unesco"]);
+
+function capitalize(lower: string): string {
+  return lower.charAt(0).toLocaleUpperCase() + lower.slice(1);
+}
+
+// Título legible (Title Case): "dental global" / "DENTAL GLOBAL" → "Dental Global".
+// - Cada palabra en "Inicial + minúsculas" (incluida la mezcla de mayúsculas:
+//   "Supermercado LA SIRENA" → "Supermercado La Sirena").
+// - Conserva las siglas cortas todo-mayúsculas ("UPA", "BBQ", "GO", "EEUU").
+// - Respeta los nombres ya bien escritos ("OdontoLeon", "McDonald's", "eBay").
 export function formatTitle(value: unknown): string {
   const text = String(value ?? "").trim();
   if (!text) return "";
-  const letters = text.replace(/[^\p{L}]/gu, "");
-  const source = letters.length >= 5 && letters === letters.toUpperCase() ? text.toLowerCase() : text;
-  return source.replace(/\S+/g, (word) => {
+  return text.replace(/\S+/g, (word) => {
     const m = word.match(/^([^\p{L}\p{N}]*)(\p{L}[\p{L}\p{N}’'-]*)(.*)$/u);
-    if (!m) return word;
-    return m[1] + m[2].charAt(0).toLocaleUpperCase() + m[2].slice(1) + m[3];
+    if (!m) return word; // sin letras (números, símbolos): sin cambios
+    const [, prefix, core, suffix] = m;
+    const lower = core.toLocaleLowerCase();
+    const isAllCaps = core === core.toLocaleUpperCase();
+    const isAllLower = core === lower;
+    // 1) palabras comunes: siempre "Inicial + minúsculas"
+    if (NORMALIZE_WORDS.has(lower)) return prefix + capitalize(lower) + suffix;
+    // 2) siglas en mayúsculas: cortas (UPA, BBQ, GO) o conocidas (EEUU, NASA)
+    if (isAllCaps && (core.length <= ACRONYM_MAX || KNOWN_ACRONYMS.has(lower))) return prefix + core + suffix;
+    // 3) todo mayúsculas o todo minúsculas: se normaliza
+    if (isAllCaps || isAllLower) return prefix + capitalize(lower) + suffix;
+    // 4) mayúsculas/minúsculas mezcladas (OdontoLeon, McDonald's): se respeta
+    return word;
   });
 }
 
