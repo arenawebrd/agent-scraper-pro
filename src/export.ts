@@ -1,3 +1,4 @@
+import { formatAddress } from "./address";
 import { nativeUrls } from "./providers/shared";
 import type { Business } from "./types";
 
@@ -73,7 +74,9 @@ export function prepareDataForExport(data: any[], gl?: string, hl?: string): any
     processed.types = Array.isArray(item.types)
       ? item.types.map((t: any) => (typeof t === "object" ? JSON.stringify(t) : String(t))).join(", ")
       : item.types || item.type || "";
-    processed.address = typeof item.address === "object" ? JSON.stringify(item.address) : item.address || "";
+    processed.address = formatAddress(item, gl);
+    // Se conserva el texto original del proveedor por si hace falta depurar
+    processed.address_raw = typeof item.address === "object" ? JSON.stringify(item.address) : item.address || "";
     processed.street = typeof item.street === "object" ? JSON.stringify(item.street) : item.street || "";
     processed.postal_code = typeof item.postal_code === "object" ? JSON.stringify(item.postal_code) : item.postal_code || "";
     processed.locality = typeof item.locality === "object" ? JSON.stringify(item.locality) : item.locality || "";

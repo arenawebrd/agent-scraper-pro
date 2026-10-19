@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { formatAddress, formatAddressComponent } from "./address";
 import { toCSV } from "./export";
 import { nativeUrls } from "./providers/shared";
 import type { Business } from "./types";
@@ -149,11 +150,11 @@ export function toDirectoryRows(results: Business[], gl?: string, hl?: string): 
     row.whatsapp = "";
     row.website = b.website || "";
     row.email = b.email || "";
-    row.address = b.address || "";
-    row.street = b.street || "";
+    row.address = formatAddress(b, gl);
+    row.street = formatAddressComponent(b.street);
     row.postal_code = b.postal_code || "";
-    row.locality = b.locality || "";
-    row.province = b.province || "";
+    row.locality = formatAddressComponent(b.locality);
+    row.province = formatAddressComponent(b.province);
     row.country = countryName(b.country, gl);
     row.gps_coodenates = lat !== "" && lng !== "" ? `${lat},${lng}` : "";
     row.latitude = lat;
